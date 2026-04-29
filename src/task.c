@@ -12,6 +12,7 @@ static task_t  bootstrap;
 static task_t *current = &bootstrap;
 static task_t *all_tasks = &bootstrap; /* singly-linked list head */
 static int     next_id   = 1;
+static volatile int resched_pending;
 
 static void list_append(task_t *t) {
     task_t *p = all_tasks;
@@ -120,4 +121,14 @@ task_t *task_current(void) {
 
 task_t *task_first(void) {
     return all_tasks;
+}
+
+void task_request_resched(void) {
+    resched_pending = 1;
+}
+
+int task_resched_pending(void) {
+    int v = resched_pending;
+    resched_pending = 0;
+    return v;
 }

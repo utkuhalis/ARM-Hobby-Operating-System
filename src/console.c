@@ -58,6 +58,9 @@ static char console_input_getc(void) {
             return uart_getc();
         }
         __asm__ volatile("wfi");
+        if (task_resched_pending()) {
+            task_yield();
+        }
 #else
         return uart_getc();
 #endif

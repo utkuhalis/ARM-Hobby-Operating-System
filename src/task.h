@@ -29,6 +29,9 @@ int   task_spawn(const char *name, void (*entry)(void *), void *arg);
 void  task_yield(void);
 void  task_exit(void);
 
+void  task_request_resched(void);
+int   task_resched_pending(void);
+
 task_t *task_current(void);
 task_t *task_first(void);
 

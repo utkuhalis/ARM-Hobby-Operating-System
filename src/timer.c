@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "timer.h"
 #include "gic.h"
+#include "task.h"
 
 #define IRQ_TIMER_PHYS 30
 
@@ -37,6 +38,10 @@ void timer_init(uint32_t want_hz) {
 void timer_tick(void) {
     tick_count++;
     set_tval(reload_cycles);
+    /* mark a reschedule slot so the next voluntary yield rotates */
+    if ((tick_count & 0x7) == 0) {
+        task_request_resched();
+    }
 }
 
 uint64_t timer_ticks(void) {

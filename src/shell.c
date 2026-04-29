@@ -234,15 +234,19 @@ static const char *task_state_str(int s) {
     }
 }
 
+extern uint64_t kernel_ticker_beats(void);
+
 static void cmd_ps(int argc, char **argv) {
     (void)argc; (void)argv;
     task_t *t = task_first();
-    console_printf("  %-4s %-16s %-8s\n", "id", "name", "state");
+    console_printf("  %-4s %-16s %-10s\n", "id", "name", "state");
     while (t) {
-        console_printf("  %-4d %-16s %-8s\n",
+        console_printf("  %-4d %-16s %-10s\n",
                        t->id, t->name, task_state_str(t->state));
         t = t->next;
     }
+    console_printf("\nticker beats   : %lu\n", kernel_ticker_beats());
+    console_printf("kernel ticks   : %lu\n", timer_ticks());
 }
 #endif
 

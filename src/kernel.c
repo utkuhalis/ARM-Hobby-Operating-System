@@ -93,7 +93,8 @@ static void post(void) {
     console_puts("[ OK ] Heap      kalloc/kfree on a 2 MiB pool\n");
 
     delay_ms(150);
-    console_puts("[ OK ] Scheduler cooperative round-robin (yield-driven)\n");
+    console_puts("[ OK ] Scheduler cooperative round-robin\n");
+    console_puts("                 timer-driven resched hint @ 12.5 Hz\n");
 
     delay_ms(150);
     console_printf("[ OK ] Interrupt GIC v2 distributor + CPU iface\n");
@@ -134,6 +135,16 @@ static void ticker_thread(void *arg) {
     }
 }
 
+static void idle_thread(void *arg) {
+    (void)arg;
+    for (;;) {
+        __asm__ volatile("wfi");
+        if (task_resched_pending()) {
+            task_yield();
+        }
+    }
+}
+
 uint64_t kernel_ticker_beats(void) {
     return ticker_beats;
 }
@@ -170,6 +181,7 @@ void kernel_main(void) {
     post();
 
 #ifdef BOARD_HAS_GIC
+    task_spawn("idle",   idle_thread,   NULL);
     task_spawn("ticker", ticker_thread, NULL);
 #endif
 
