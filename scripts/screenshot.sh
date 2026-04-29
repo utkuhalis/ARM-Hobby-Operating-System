@@ -23,6 +23,8 @@ fi
 ) | qemu-system-aarch64 \
         -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
         -device ramfb -device virtio-keyboard-device \
+        -drive file="${ROOT}/build/disk.img",if=none,format=raw,id=hd0 \
+        -device virtio-blk-device,drive=hd0 \
         -display none \
         -monitor stdio \
         -serial null \

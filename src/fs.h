@@ -23,4 +23,7 @@ int   fs_count(void);
 int   fs_write(const char *name, const void *data, uint32_t size);
 int   fs_delete(const char *name);
 
+int   fs_save(void);  /* persist current state to virtio-blk */
+int   fs_load(void);  /* hydrate from virtio-blk; -1 if magic missing */
+
 #endif

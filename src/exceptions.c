@@ -5,6 +5,7 @@
 #include "timer.h"
 #include "uart.h"
 #include "virtio_input.h"
+#include "virtio_blk.h"
 
 #define IRQ_TIMER_PHYS  30
 #define IRQ_UART_PL011  33
@@ -40,6 +41,7 @@ void irq_handler(void) {
     default:
         if (irq >= IRQ_VIRTIO_BASE && irq < IRQ_VIRTIO_END) {
             vinput_irq();
+            vblk_irq();
         }
         break;
     }

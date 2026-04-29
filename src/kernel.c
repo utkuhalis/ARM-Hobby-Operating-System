@@ -10,6 +10,7 @@
 #include "gic.h"
 #include "timer.h"
 #include "virtio_input.h"
+#include "virtio_blk.h"
 #include "mmu.h"
 #include "task.h"
 #endif
@@ -109,6 +110,16 @@ static void post(void) {
     } else {
         console_puts("[ -- ] Keyboard  no virtio-input device found\n");
         console_puts("                 launch QEMU with -device virtio-keyboard-device\n");
+    }
+
+    delay_ms(150);
+    if (vblk_present()) {
+        console_printf("[ OK ] Block     virtio-blk @ IRQ %d  capacity %lu sectors\n",
+                       vblk_irq_number(),
+                       (unsigned long)vblk_capacity_sectors());
+        console_puts("                 driver attached; persistence WIP\n");
+    } else {
+        console_puts("[ -- ] Block     no virtio-blk device attached\n");
     }
 #else
     console_puts("[ -- ] Interrupt (no GIC driver on this board, polling UART)\n");
@@ -226,6 +237,7 @@ void kernel_main(void) {
 #ifdef BOARD_HAS_GIC
     timer_init(100);
     vinput_init();
+    vblk_init();
 #endif
 
 #ifdef BOARD_HAS_RAMFB

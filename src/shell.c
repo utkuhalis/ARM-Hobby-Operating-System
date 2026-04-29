@@ -46,6 +46,8 @@ static void cmd_reboot(int argc, char **argv);
 #ifdef BOARD_HAS_GIC
 static void cmd_ps(int argc, char **argv);
 static void cmd_run(int argc, char **argv);
+static void cmd_save(int argc, char **argv);
+static void cmd_load(int argc, char **argv);
 #endif
 
 static const struct cmd cmds[] = {
@@ -64,6 +66,8 @@ static const struct cmd cmds[] = {
 #ifdef BOARD_HAS_GIC
     {"ps",      cmd_ps,      "list kernel tasks"},
     {"run",     cmd_run,     "run a built-in user program (try 'run hello')"},
+    {"save",    cmd_save,    "persist filesystem to virtio-blk disk"},
+    {"load",    cmd_load,    "reload filesystem from virtio-blk disk"},
 #endif
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
@@ -239,6 +243,20 @@ static const char *task_state_str(int s) {
 }
 
 extern uint64_t kernel_ticker_beats(void);
+
+static void cmd_save(int argc, char **argv) {
+    (void)argc; (void)argv;
+    console_puts("save: virtio-blk write path is wired but the request "
+                 "submit handshake is still hanging in QEMU; tracking as a "
+                 "known issue and treating disk as read-only for now.\n");
+}
+
+static void cmd_load(int argc, char **argv) {
+    (void)argc; (void)argv;
+    int r = fs_load();
+    if (r == 0) console_puts("filesystem loaded\n");
+    else console_printf("load failed (%d) -- disk has no fs yet?\n", r);
+}
 
 static void cmd_run(int argc, char **argv) {
     if (argc < 2) {
