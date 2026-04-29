@@ -21,7 +21,7 @@ fi
     sleep 1
     echo "quit"
 ) | qemu-system-aarch64 \
-        -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
+        -M virt,gic-version=2 -cpu cortex-a72 -smp 4 -m 256M \
         -device ramfb -device virtio-keyboard-device \
         -device virtio-mouse-device \
         -drive file="${ROOT}/build/disk.img",if=none,format=raw,id=hd0 \

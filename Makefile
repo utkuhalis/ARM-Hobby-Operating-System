@@ -70,7 +70,7 @@ $(IMG): $(ELF)
 $(PI_IMG): $(IMG)
 	cp $< $@
 
-QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
+QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -smp 4 -m 256M \
              -device ramfb -device virtio-keyboard-device \
              -device virtio-mouse-device \
              -drive file=$(DISK_IMG),if=none,format=raw,id=hd0 \

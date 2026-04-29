@@ -28,6 +28,43 @@ extern uint8_t _kernel_start[];
 extern uint8_t _kernel_end[];
 extern uint8_t _stack_top[];
 
+#ifdef BOARD_HAS_GIC
+#include "psci.h"
+
+#define MAX_CPUS 4
+uint8_t secondary_stacks[MAX_CPUS * 16384] __attribute__((aligned(16)));
+
+static volatile int cpus_alive = 1;  /* boot CPU counts itself */
+
+void secondary_main(void) {
+    /* Tiny ldxr/stxr increment so we don't drop counts when secondaries
+     * race on entry (no LSE on cortex-a72). */
+    int *p = (int *)&cpus_alive;
+    __asm__ volatile(
+        "1: ldxr w8, [%0]\n"
+        "   add  w8, w8, #1\n"
+        "   stxr w9, w8, [%0]\n"
+        "   cbnz w9, 1b\n"
+        : : "r"(p) : "x8", "x9", "memory");
+    for (;;) {
+        __asm__ volatile("wfi");
+    }
+}
+
+int kernel_cpu_count(void) { return cpus_alive; }
+
+extern void secondary_start(void);
+
+static void smp_bring_up(void) {
+    for (int cpu = 1; cpu < MAX_CPUS; cpu++) {
+        uint64_t target = 0x80000000ull | (uint64_t)cpu;
+        psci_cpu_on(target,
+                    (uint64_t)(uintptr_t)secondary_start,
+                    0);
+    }
+}
+#endif
+
 /*
  * Slightly tinted background and softer foreground than pure white --
  * looks closer to a modern terminal than to monochrome VGA, and the
@@ -140,6 +177,14 @@ static void post(void) {
     }
 #else
     console_puts("[ -- ] IRQ      polling only on this board\n");
+#endif
+
+    delay_ms(150);
+#ifdef BOARD_HAS_GIC
+    /* give secondaries a chance to register before we report the count */
+    delay_ms(40);
+    console_printf("[ OK ] SMP      %d CPU%s online (via PSCI CPU_ON)\n",
+                   cpus_alive, cpus_alive == 1 ? "" : "s");
 #endif
 
     delay_ms(150);
@@ -275,6 +320,7 @@ void kernel_main(void) {
 #ifdef BOARD_HAS_GIC
     irq_enable();
     task_init();
+    smp_bring_up();
 #endif
 
     post();
