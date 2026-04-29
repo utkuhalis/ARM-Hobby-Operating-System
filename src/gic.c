@@ -1,8 +1,13 @@
 #include <stdint.h>
 #include "gic.h"
 
+#ifndef GICD_BASE_OVERRIDE
 #define GICD_BASE  0x08000000UL
 #define GICC_BASE  0x08010000UL
+#else
+#define GICD_BASE  GICD_BASE_OVERRIDE
+#define GICC_BASE  GICC_BASE_OVERRIDE
+#endif
 
 #define GICD_CTLR        (volatile uint32_t *)(GICD_BASE + 0x000)
 #define GICD_TYPER       (volatile uint32_t *)(GICD_BASE + 0x004)
