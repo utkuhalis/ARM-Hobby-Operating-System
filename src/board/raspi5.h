@@ -1,0 +1,6 @@
+#ifndef HOBBY_OS_BOARD_RASPI5_H
+#define HOBBY_OS_BOARD_RASPI5_H
+
+#define UART_BASE 0x107D001000UL
+
+#endif

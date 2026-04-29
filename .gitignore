@@ -1,0 +1,19 @@
+# Build artifacts
+build/
+*.o
+*.elf
+*.img
+*.bin
+*.map
+*.lst
+*.dis
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local docs / specs / notes — README.md is the only tracked Markdown
+docs/
+*.md
+!README.md
