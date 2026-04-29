@@ -16,7 +16,8 @@ ASFLAGS := -ffreestanding -nostdlib -nostartfiles -mcpu=cortex-a72
 LDFLAGS := -nostdlib -nostartfiles -Wl,-T,linker/$(BOARD).ld -Wl,--build-id=none
 
 CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
-           $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c
+           $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c \
+           $(SRC)/heap.c
 
 ifeq ($(BOARD),qemu-virt)
 C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \

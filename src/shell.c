@@ -5,6 +5,7 @@
 #include "fs.h"
 #include "sysinfo.h"
 #include "psci.h"
+#include "heap.h"
 
 #ifdef BOARD_HAS_GIC
 #include "timer.h"
@@ -122,6 +123,8 @@ static void cmd_meminfo(int argc, char **argv) {
     console_printf("filesystem store : %d slots x %d bytes = %d bytes total\n",
                    FS_MAX_FILES, FS_MAX_DATA, FS_MAX_FILES * FS_MAX_DATA);
     console_printf("files in use     : %d / %d\n", fs_count(), FS_MAX_FILES);
+    console_printf("kernel heap      : %lu bytes total, %lu bytes in use\n",
+                   (unsigned long)heap_total(), (unsigned long)heap_used());
 }
 
 static void cmd_uptime(int argc, char **argv) {

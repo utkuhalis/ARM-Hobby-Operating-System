@@ -4,6 +4,7 @@
 #include "shell.h"
 #include "fs.h"
 #include "sysinfo.h"
+#include "heap.h"
 #ifdef BOARD_HAS_GIC
 #include "exceptions.h"
 #include "gic.h"
@@ -115,6 +116,7 @@ static void post(void) {
 }
 
 void kernel_main(void) {
+    heap_init();
     fs_init();
 
 #ifdef BOARD_HAS_GIC
