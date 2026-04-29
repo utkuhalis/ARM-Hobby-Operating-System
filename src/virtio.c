@@ -21,6 +21,11 @@ void vio_write32(struct virtio_mmio_dev *d, uint32_t off, uint32_t v) {
 }
 
 int virtio_mmio_find(uint32_t want_id, struct virtio_mmio_dev *out) {
+    return virtio_mmio_find_nth(want_id, 0, out);
+}
+
+int virtio_mmio_find_nth(uint32_t want_id, int nth, struct virtio_mmio_dev *out) {
+    int seen = 0;
     for (int i = 0; i < VIRTIO_MMIO_SLOTS; i++) {
         volatile uint8_t *base =
             (volatile uint8_t *)(VIRTIO_MMIO_BASE + (uint64_t)i * VIRTIO_MMIO_STRIDE);
@@ -28,6 +33,7 @@ int virtio_mmio_find(uint32_t want_id, struct virtio_mmio_dev *out) {
         if (magic != MAGIC_VALUE) continue;
         uint32_t did = *(volatile uint32_t *)(base + MMIO_DEVICE_ID);
         if (did != want_id) continue;
+        if (seen++ < nth) continue;
         out->base       = base;
         out->device_id  = did;
         out->irq        = VIRTIO_MMIO_IRQ_BASE + (uint32_t)i;

@@ -12,6 +12,7 @@
 #include "gic.h"
 #include "timer.h"
 #include "virtio_input.h"
+#include "virtio_mouse.h"
 #include "virtio_blk.h"
 #include "virtio_net.h"
 #include "mmu.h"
@@ -112,6 +113,14 @@ static void post(void) {
     }
 
     delay_ms(150);
+    int mouse_irq = vmouse_irq_number();
+    if (mouse_irq >= 0) {
+        console_printf("[ OK ] Mouse    virtio-mouse @ IRQ %d\n", mouse_irq);
+    } else {
+        console_puts("[ -- ] Mouse    no virtio-mouse found\n");
+    }
+
+    delay_ms(150);
     if (vblk_present()) {
         console_printf("[ OK ] Block    virtio-blk @ IRQ %d  %lu sectors\n",
                        vblk_irq_number(),
@@ -199,6 +208,11 @@ static void status_thread(void *arg) {
 
 #ifdef BOARD_HAS_RAMFB
         fb_console_status_set(line);
+        if (vmouse_present()) {
+            int32_t mx = 0, my = 0;
+            vmouse_position(&mx, &my);
+            fb_draw_cursor((uint32_t)mx, (uint32_t)my, 0x00ffe060u);
+        }
 #endif
         ticker_beats++;
         for (int i = 0; i < 5; i++) task_yield();
@@ -247,6 +261,7 @@ void kernel_main(void) {
 #ifdef BOARD_HAS_GIC
     timer_init(100);
     vinput_init();
+    vmouse_init();
     vblk_init();
     vnet_init();
 #endif

@@ -98,6 +98,35 @@ void fb_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t color, uint3
     }
 }
 
+/* 12-row classic arrow cursor, '#' = filled, '.' = transparent */
+static const char cursor_sprite[12][12] = {
+    "#...........",
+    "##..........",
+    "#.#.........",
+    "#..#........",
+    "#...#.......",
+    "#....#......",
+    "#.....#.....",
+    "#......#....",
+    "#...####....",
+    "#..#........",
+    "#.#.........",
+    "##..........",
+};
+
+void fb_draw_cursor(uint32_t x, uint32_t y, uint32_t color) {
+    uint32_t *px = fb_pixels();
+    for (int r = 0; r < 12; r++) {
+        for (int c = 0; c < 12; c++) {
+            if (cursor_sprite[r][c] != '#') continue;
+            uint32_t pxs = x + (uint32_t)c;
+            uint32_t pys = y + (uint32_t)r;
+            if (pxs >= FB_WIDTH || pys >= FB_HEIGHT) continue;
+            px[pys * FB_WIDTH + pxs] = color;
+        }
+    }
+}
+
 void fb_draw_glyph16(uint32_t x, uint32_t y, char c, uint32_t color) {
     const uint8_t *glyph = font_8x16_glyph(c);
     uint32_t *px = fb_pixels();

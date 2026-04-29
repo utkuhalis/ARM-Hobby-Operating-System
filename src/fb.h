@@ -14,5 +14,6 @@ void fb_scroll_up(uint32_t pixel_rows, uint32_t bg);
 void fb_draw_glyph(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t scale);
 void fb_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t color, uint32_t scale);
 void fb_draw_glyph16(uint32_t x, uint32_t y, char c, uint32_t color);
+void fb_draw_cursor(uint32_t x, uint32_t y, uint32_t color);
 
 #endif
