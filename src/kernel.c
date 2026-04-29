@@ -8,6 +8,7 @@
 #include "exceptions.h"
 #include "gic.h"
 #include "timer.h"
+#include "virtio_input.h"
 #endif
 
 #ifdef BOARD_HAS_RAMFB
@@ -85,6 +86,16 @@ static void post(void) {
     console_printf("[ OK ] Interrupt GIC v2 distributor + CPU iface\n");
     console_printf("                 system tick at %u Hz, CPU now sleeps when idle\n",
                    timer_hz());
+
+    delay_ms(150);
+    int kbd_irq = vinput_irq_number();
+    if (kbd_irq >= 0) {
+        console_printf("[ OK ] Keyboard  virtio-input @ IRQ %d\n", kbd_irq);
+        console_puts("                 host keyboard delivers events into ring buffer\n");
+    } else {
+        console_puts("[ -- ] Keyboard  no virtio-input device found\n");
+        console_puts("                 launch QEMU with -device virtio-keyboard-device\n");
+    }
 #else
     console_puts("[ -- ] Interrupt (no GIC driver on this board, polling UART)\n");
 #endif
@@ -110,6 +121,7 @@ void kernel_main(void) {
 
 #ifdef BOARD_HAS_GIC
     timer_init(100);
+    vinput_init();
 #endif
 
 #ifdef BOARD_HAS_RAMFB

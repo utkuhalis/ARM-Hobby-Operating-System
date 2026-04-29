@@ -22,7 +22,7 @@ fi
     echo "quit"
 ) | qemu-system-aarch64 \
         -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
-        -device ramfb \
+        -device ramfb -device virtio-keyboard-device \
         -display none \
         -monitor stdio \
         -serial null \

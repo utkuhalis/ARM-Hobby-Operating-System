@@ -190,6 +190,12 @@ hobby-os/
 │   ├── fs.c, fs.h        # 16-slot RAM filesystem
 │   ├── sysinfo.c, sysinfo.h  # MIDR/MPIDR/CNT* readers
 │   ├── psci.c, psci.h    # PSCI HVC for halt/reset
+│   ├── exceptions.c/.h   # VBAR setup, irq_enable, irq_handler dispatch
+│   ├── vectors.S         # AArch64 EL1 vector table (IRQ entry)
+│   ├── gic.c, gic.h      # GIC v2 distributor + CPU interface
+│   ├── timer.c, timer.h  # ARM generic timer @ 100 Hz tick
+│   ├── virtio.c, virtio.h          # virtio-mmio device discovery
+│   ├── virtio_input.c, virtio_input.h  # virtio-input keyboard driver
 │   ├── fb.c, fb.h        # ramfb framebuffer + glyph drawing
 │   ├── fb_console.c, fb_console.h  # text terminal on the framebuffer
 │   ├── fw_cfg.c, fw_cfg.h  # QEMU fw_cfg DMA client
@@ -207,15 +213,18 @@ hobby-os/
 
 ## Roadmap
 
-- [ ] USB / virtio keyboard so the QEMU window is fully interactive
-- [ ] GIC + timer interrupts
-- [ ] MMU + paging
+- [x] GIC + timer interrupts (Phase A)
+- [x] virtio-keyboard (Phase B, host keyboard goes straight to the shell)
+- [ ] virtio-mouse + cursor
+- [ ] MMU + paging + user mode (EL0)
 - [ ] A real heap allocator
 - [ ] Cooperative, then pre-emptive scheduler
 - [ ] Wake secondary cores via PSCI `CPU_ON`
-- [ ] Persistent storage (block device + a real filesystem)
-- [ ] User-mode processes
-- [ ] Pi 5 framebuffer via the mailbox property channel
+- [ ] Persistent storage (virtio-blk + a real filesystem)
+- [ ] User-mode processes + a window manager
+- [ ] virtio-net + minimum TCP/IP
+- [ ] User accounts + a tiny package manager
+- [ ] Pi 5 framebuffer + Pi 5 GIC port
 
 ## License
 

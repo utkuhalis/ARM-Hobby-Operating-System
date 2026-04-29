@@ -20,6 +20,7 @@ CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
 
 ifeq ($(BOARD),qemu-virt)
 C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
+           $(SRC)/virtio.c $(SRC)/virtio_input.c \
            $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/fw_cfg.c $(SRC)/font.c
 S_SRCS  := $(SRC)/boot.S $(SRC)/vectors.S
 else
@@ -61,7 +62,8 @@ $(IMG): $(ELF)
 $(PI_IMG): $(IMG)
 	cp $< $@
 
-QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -m 256M -device ramfb
+QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
+             -device ramfb -device virtio-keyboard-device
 
 run: $(ELF)
 	qemu-system-aarch64 $(QEMU_BASE) -display none -serial stdio -kernel $<

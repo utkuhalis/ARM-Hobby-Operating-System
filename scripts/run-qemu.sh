@@ -16,5 +16,6 @@ exec qemu-system-aarch64 \
     -cpu cortex-a72 \
     -m 256M \
     -device ramfb \
+    -device virtio-keyboard-device \
     -nographic \
     -kernel "${ELF}"

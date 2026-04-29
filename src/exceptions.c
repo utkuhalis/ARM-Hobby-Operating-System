@@ -4,9 +4,12 @@
 #include "gic.h"
 #include "timer.h"
 #include "uart.h"
+#include "virtio_input.h"
 
-#define IRQ_TIMER_PHYS 30
-#define IRQ_UART_PL011 33
+#define IRQ_TIMER_PHYS  30
+#define IRQ_UART_PL011  33
+#define IRQ_VIRTIO_BASE 48
+#define IRQ_VIRTIO_END  80
 
 extern uint8_t vectors[];
 
@@ -35,6 +38,9 @@ void irq_handler(void) {
         uart_irq();
         break;
     default:
+        if (irq >= IRQ_VIRTIO_BASE && irq < IRQ_VIRTIO_END) {
+            vinput_irq();
+        }
         break;
     }
 

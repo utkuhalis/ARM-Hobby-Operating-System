@@ -13,13 +13,20 @@
 
 #define UART_DR   (*(volatile uint32_t *)(UART_BASE + 0x00))
 #define UART_FR   (*(volatile uint32_t *)(UART_BASE + 0x18))
+#define UART_LCRH (*(volatile uint32_t *)(UART_BASE + 0x2C))
+#define UART_CR   (*(volatile uint32_t *)(UART_BASE + 0x30))
+#define UART_IFLS (*(volatile uint32_t *)(UART_BASE + 0x34))
 #define UART_IMSC (*(volatile uint32_t *)(UART_BASE + 0x38))
 #define UART_ICR  (*(volatile uint32_t *)(UART_BASE + 0x44))
 
 #define FR_RXFE   (1u << 4)
 #define FR_TXFF   (1u << 5)
 
+#define LCRH_FEN     (1u << 4)
+#define LCRH_WLEN_8  (3u << 5)
+
 #define IMSC_RXIM (1u << 4)
+#define IMSC_RTIM (1u << 6)
 #define ICR_ALL   0x7ffu
 
 #ifdef BOARD_HAS_GIC
@@ -53,7 +60,9 @@ static int rx_pop(uint8_t *out) {
 void uart_init(void) {
 #ifdef BOARD_HAS_GIC
     UART_ICR  = ICR_ALL;
-    UART_IMSC = IMSC_RXIM;
+    UART_LCRH = LCRH_FEN | LCRH_WLEN_8;
+    UART_IFLS = 0;
+    UART_IMSC = IMSC_RXIM | IMSC_RTIM;
     gic_enable_irq(IRQ_UART_PL011);
 #else
     /* polling-only UART */
