@@ -21,7 +21,8 @@
 #define DESC_VALID   0x1ULL
 #define DESC_AF      (1ULL << 10)
 #define DESC_SH_IS   (3ULL << 8)
-#define DESC_AP_RW   (0ULL << 6)  /* AP[2:1]=00 -> EL1 RW only */
+#define DESC_AP_KERN (0ULL << 6)  /* AP[2:1]=00 -> EL1 RW only */
+#define DESC_AP_USER (1ULL << 6)  /* AP[2:1]=01 -> EL1 RW + EL0 RW (demo) */
 #define DESC_ATTR(n) ((uint64_t)(n) << 2)
 
 #define TCR_T0SZ_25  25
@@ -33,8 +34,9 @@
 
 static uint64_t pgdir[512] __attribute__((aligned(4096)));
 
-static uint64_t make_block(uint64_t pa, int attr_idx, int normal) {
-    uint64_t d = (pa & ~0x3fffffffULL) | DESC_BLOCK | DESC_AF | DESC_AP_RW |
+static uint64_t make_block(uint64_t pa, int attr_idx, int normal, int user) {
+    uint64_t d = (pa & ~0x3fffffffULL) | DESC_BLOCK | DESC_AF |
+                 (user ? DESC_AP_USER : DESC_AP_KERN) |
                  DESC_ATTR(attr_idx);
     if (normal) {
         d |= DESC_SH_IS;
@@ -54,10 +56,17 @@ void mmu_init(void) {
     for (int i = 0; i < 512; i++) {
         pgdir[i] = 0;
     }
-    pgdir[0] = make_block(0x00000000UL, ATTRIDX_DEVICE, 0);
-    pgdir[1] = make_block(0x40000000UL, ATTRIDX_NORMAL, 1);
-    pgdir[2] = make_block(0x80000000UL, ATTRIDX_NORMAL, 1);
-    pgdir[3] = make_block(0xC0000000UL, ATTRIDX_NORMAL, 1);
+    pgdir[0] = make_block(0x00000000UL, ATTRIDX_DEVICE, 0, 0);
+    pgdir[1] = make_block(0x40000000UL, ATTRIDX_NORMAL, 1, 0);
+    pgdir[2] = make_block(0x80000000UL, ATTRIDX_NORMAL, 1, 0);
+    pgdir[3] = make_block(0xC0000000UL, ATTRIDX_NORMAL, 1, 0);
+    /*
+     * Note: keeping AP=00 (EL1-only) on every block descriptor here.
+     * Real EL0 isolation needs a finer-grained pgtable so the kernel's
+     * own text and data can stay AP=00 while a separate user-heap
+     * region gets AP=01. That refactor is left for a follow-up; today
+     * the syscall path is exercised but user tasks run at EL1.
+     */
 
     __asm__ volatile("dsb sy");
     __asm__ volatile("msr ttbr0_el1, %0" :: "r"((uint64_t)(uintptr_t)pgdir));
