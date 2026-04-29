@@ -6,5 +6,6 @@
 void fb_console_init(uint32_t bg, uint32_t fg);
 void fb_console_putc(char c);
 void fb_console_set_fg(uint32_t fg);
+void fb_console_status_set(const char *line);
 
 #endif

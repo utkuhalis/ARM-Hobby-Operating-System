@@ -126,6 +126,67 @@ static void post(void) {
 #ifdef BOARD_HAS_GIC
 static volatile uint64_t ticker_beats;
 
+static int task_state_count(int *running, int *ready) {
+    int total = 0;
+    *running = 0;
+    *ready = 0;
+    for (task_t *t = task_first(); t; t = t->next) {
+        total++;
+        if (t->state == 0) (*ready)++;
+        if (t->state == 1) (*running)++;
+    }
+    return total;
+}
+
+static void format_uint(char *buf, uint64_t v) {
+    char tmp[24];
+    int n = 0;
+    if (v == 0) tmp[n++] = '0';
+    while (v > 0) { tmp[n++] = '0' + (char)(v % 10); v /= 10; }
+    int o = 0;
+    while (n > 0) buf[o++] = tmp[--n];
+    buf[o] = '\0';
+}
+
+static void status_thread(void *arg) {
+    (void)arg;
+    static char line[120];
+    for (;;) {
+        uint64_t s = sys_uptime_seconds();
+        uint64_t ticks = timer_ticks();
+        int running = 0, ready = 0;
+        int total = task_state_count(&running, &ready);
+
+        char up[24], tk[24], to[8], tr[8];
+        format_uint(up, s);
+        format_uint(tk, ticks);
+        format_uint(to, (uint64_t)total);
+        format_uint(tr, (uint64_t)ready);
+
+        char *p = line;
+        const char *parts[] = {
+            "Hobby ARM OS  | up ", up, "s  | ticks ", tk,
+            "  | tasks ", to, " (", tr, " ready)  | beats ", NULL
+        };
+        for (int i = 0; parts[i]; i++) {
+            const char *s2 = parts[i];
+            while (*s2) *p++ = *s2++;
+        }
+        char beats[24];
+        format_uint(beats, ticker_beats);
+        const char *s3 = beats;
+        while (*s3) *p++ = *s3++;
+        *p = '\0';
+
+#ifdef BOARD_HAS_RAMFB
+        fb_console_status_set(line);
+#endif
+        ticker_beats++;
+        for (int i = 0; i < 5; i++) task_yield();
+        __asm__ volatile("wfi");
+    }
+}
+
 static void ticker_thread(void *arg) {
     (void)arg;
     for (;;) {
@@ -183,6 +244,7 @@ void kernel_main(void) {
 #ifdef BOARD_HAS_GIC
     task_spawn("idle",   idle_thread,   NULL);
     task_spawn("ticker", ticker_thread, NULL);
+    task_spawn("status", status_thread, NULL);
 #endif
 
     shell_run();
