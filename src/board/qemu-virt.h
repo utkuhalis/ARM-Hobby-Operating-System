@@ -4,5 +4,6 @@
 #define UART_BASE 0x09000000UL
 
 #define BOARD_HAS_RAMFB 1
+#define BOARD_NAME "qemu-virt"
 
 #endif

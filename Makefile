@@ -15,10 +15,13 @@ CFLAGS  := -ffreestanding -nostdlib -nostartfiles \
 ASFLAGS := -ffreestanding -nostdlib -nostartfiles -mcpu=cortex-a72
 LDFLAGS := -nostdlib -nostartfiles -Wl,-T,linker/$(BOARD).ld -Wl,--build-id=none
 
+CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
+           $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c
+
 ifeq ($(BOARD),qemu-virt)
-C_SRCS  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/fb.c $(SRC)/fw_cfg.c $(SRC)/font.c
+C_SRCS  := $(CORE_C) $(SRC)/fb.c $(SRC)/fw_cfg.c $(SRC)/font.c
 else
-C_SRCS  := $(SRC)/kernel.c $(SRC)/uart.c
+C_SRCS  := $(CORE_C)
 endif
 S_SRCS  := $(wildcard $(SRC)/*.S)
 OBJS    := $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(C_SRCS)) \
@@ -59,10 +62,10 @@ $(PI_IMG): $(IMG)
 QEMU_BASE := -M virt -cpu cortex-a72 -m 256M -device ramfb
 
 run: $(ELF)
-	qemu-system-aarch64 $(QEMU_BASE) -display cocoa -kernel $<
-
-run-serial: $(ELF)
 	qemu-system-aarch64 $(QEMU_BASE) -display none -serial stdio -kernel $<
+
+run-graphic: $(ELF)
+	qemu-system-aarch64 $(QEMU_BASE) -display cocoa -serial stdio -kernel $<
 
 screenshot: $(ELF)
 	bash scripts/screenshot.sh

@@ -3,4 +3,6 @@
 
 #define UART_BASE 0x107D001000UL
 
+#define BOARD_NAME "raspi5"
+
 #endif

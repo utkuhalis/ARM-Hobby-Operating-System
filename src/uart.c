@@ -8,6 +8,7 @@
 #define UART_DR (*(volatile uint32_t *)(UART_BASE + 0x00))
 #define UART_FR (*(volatile uint32_t *)(UART_BASE + 0x18))
 
+#define UART_FR_RXFE (1u << 4)
 #define UART_FR_TXFF (1u << 5)
 
 void uart_init(void) {
@@ -26,4 +27,14 @@ void uart_puts(const char *s) {
         }
         uart_putc(*s);
     }
+}
+
+char uart_getc(void) {
+    while (UART_FR & UART_FR_RXFE) {
+    }
+    return (char)(UART_DR & 0xffu);
+}
+
+int uart_has_input(void) {
+    return (UART_FR & UART_FR_RXFE) ? 0 : 1;
 }
