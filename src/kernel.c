@@ -9,6 +9,7 @@
 #include "gic.h"
 #include "timer.h"
 #include "virtio_input.h"
+#include "mmu.h"
 #endif
 
 #ifdef BOARD_HAS_RAMFB
@@ -83,6 +84,10 @@ static void post(void) {
 
     delay_ms(150);
 #ifdef BOARD_HAS_GIC
+    console_puts("[ OK ] MMU       4 KiB granule, 39-bit VA, identity map\n");
+    console_puts("                 caches enabled (I+D)\n");
+
+    delay_ms(150);
     console_printf("[ OK ] Interrupt GIC v2 distributor + CPU iface\n");
     console_printf("                 system tick at %u Hz, CPU now sleeps when idle\n",
                    timer_hz());
@@ -113,6 +118,7 @@ void kernel_main(void) {
     fs_init();
 
 #ifdef BOARD_HAS_GIC
+    mmu_init();
     exceptions_init();
     gic_init();
 #endif
