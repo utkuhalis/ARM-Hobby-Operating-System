@@ -246,17 +246,26 @@ static void cmd_run(int argc, char **argv) {
         console_puts("  programs: hello\n");
         return;
     }
-    if (strcmp(argv[1], "hello") == 0) {
-        int id = task_spawn("hello", (void (*)(void *))user_main_hello, NULL);
-        if (id < 0) {
-            console_puts("run: spawn failed\n");
+    struct app { const char *name; void (*fn)(void); };
+    static const struct app apps[] = {
+        {"hello",   user_main_hello},
+        {"counter", user_main_counter},
+        {"clock",   user_main_clock},
+        {"load",    user_main_load},
+        {0, 0},
+    };
+    for (int i = 0; apps[i].name; i++) {
+        if (strcmp(argv[1], apps[i].name) == 0) {
+            int id = task_spawn(apps[i].name,
+                                (void (*)(void *))apps[i].fn, NULL);
+            if (id < 0) { console_puts("run: spawn failed\n"); return; }
+            console_printf("spawned task id %d (%s)\n", id, apps[i].name);
+            for (int y = 0; y < 8; y++) task_yield();
             return;
         }
-        console_printf("spawned task id %d (kernel mode, syscalls via SVC)\n", id);
-        for (int i = 0; i < 6; i++) task_yield();
-    } else {
-        console_printf("unknown program: %s\n", argv[1]);
     }
+    console_printf("unknown program: %s\n", argv[1]);
+    console_puts("available: hello counter clock load\n");
 }
 
 static void cmd_ps(int argc, char **argv) {

@@ -37,26 +37,72 @@ static void sys_exit(void) {
     for (;;) {}
 }
 
-void user_main_hello(void) {
-    sys_write("[user task] Hello, World!\n");
-    long pid = syscall0(SYS_GETPID);
-    char buf[16];
+static void format_decimal(char *out, long v) {
+    char tmp[24];
     int n = 0;
-    if (pid == 0) {
-        buf[n++] = '0';
-    } else {
-        char tmp[16];
-        int t = 0;
-        while (pid > 0) {
-            tmp[t++] = '0' + (char)(pid % 10);
-            pid /= 10;
-        }
-        while (t > 0) buf[n++] = tmp[--t];
+    int neg = 0;
+    if (v < 0) { neg = 1; v = -v; }
+    if (v == 0) tmp[n++] = '0';
+    while (v > 0) { tmp[n++] = '0' + (char)(v % 10); v /= 10; }
+    int o = 0;
+    if (neg) out[o++] = '-';
+    while (n > 0) out[o++] = tmp[--n];
+    out[o] = '\0';
+}
+
+static void say_pid(const char *prefix) {
+    long pid = syscall0(SYS_GETPID);
+    char num[24];
+    format_decimal(num, pid);
+    sys_write(prefix);
+    sys_write(num);
+    sys_write("\n");
+}
+
+void user_main_hello(void) {
+    sys_write("[hello] Hello, World!\n");
+    say_pid("[hello] my pid is ");
+    sys_write("[hello] exiting\n");
+    sys_exit();
+}
+
+void user_main_counter(void) {
+    sys_write("[counter] starting\n");
+    say_pid("[counter] my pid is ");
+    for (int i = 1; i <= 5; i++) {
+        char num[24];
+        format_decimal(num, i);
+        sys_write("[counter] ");
+        sys_write(num);
+        sys_write("\n");
+        for (int y = 0; y < 60; y++) syscall0(SYS_YIELD);
     }
-    buf[n++] = '\n';
-    buf[n] = 0;
-    sys_write("[user task] my pid is ");
-    sys_write(buf);
-    sys_write("[user task] going back to the kernel\n");
+    sys_write("[counter] done\n");
+    sys_exit();
+}
+
+void user_main_clock(void) {
+    sys_write("[clock] tick-tick-tick\n");
+    say_pid("[clock] my pid is ");
+    for (int i = 0; i < 3; i++) {
+        sys_write("[clock] tock\n");
+        for (int y = 0; y < 100; y++) syscall0(SYS_YIELD);
+    }
+    sys_write("[clock] done\n");
+    sys_exit();
+}
+
+void user_main_load(void) {
+    sys_write("[load] burning some ticks\n");
+    long sum = 0;
+    for (int i = 0; i < 200000; i++) {
+        sum += i;
+        if ((i & 0x3fff) == 0) syscall0(SYS_YIELD);
+    }
+    char num[24];
+    format_decimal(num, sum);
+    sys_write("[load] sum = ");
+    sys_write(num);
+    sys_write("\n[load] done\n");
     sys_exit();
 }
