@@ -15,27 +15,40 @@ The same source tree builds for two targets:
 
 ## What it does
 
+`make run` opens a QEMU window and the kernel paints "Hello, World" onto a
+PL011-style framebuffer (RAM-backed, served to QEMU via `ramfb`):
+
+![Hello, World on QEMU](assets/qemu-hello-world.png)
+
+`make run-serial` skips the window and dumps the same boot to a serial
+console, which is useful on hosts without a display:
+
 ```
-$ make run
-qemu-system-aarch64 -M virt -cpu cortex-a72 -m 128M -nographic -kernel build/qemu-virt/kernel.elf
-Hello, world
+$ make run-serial
+Hello, World
 Hobby ARM OS booted
+framebuffer ready
 ```
 
-Then it parks the CPU in `wfi` forever. Press `Ctrl-A` then `X` to quit QEMU.
+Then the CPU parks in `wfi` forever. Close the QEMU window, or in the
+serial flow press `Ctrl-A` then `X` to quit.
 
 ## How it works
 
 1. CPU starts at `_start` in [`src/boot.S`](src/boot.S).
 2. Non-zero cores park in `wfi`.
 3. Core 0 sets up a stack, zeroes `.bss`, and branches to `kernel_main` in C.
-4. `kernel_main` writes `"Hello, world"` to a PL011 UART.
-5. Halt loop.
+4. `kernel_main` writes `"Hello, World"` to a PL011 UART.
+5. On QEMU `virt`, it then talks to the QEMU `fw_cfg` device, hands it a
+   ramfb config (XRGB8888, 800×600), clears the framebuffer, and draws
+   `"Hello, World"` glyph-by-glyph using a tiny built-in 8×8 bitmap font.
+6. Halt loop.
 
 The PL011 register layout is identical between QEMU's `virt` machine and the Raspberry Pi 5, so the only per-board differences are:
 
 - the UART base address (`src/board/<name>.h`)
 - the kernel load address (`linker/<name>.ld`)
+- whether the board has a `ramfb`-style framebuffer (`BOARD_HAS_RAMFB`)
 
 ## Requirements
 
@@ -65,8 +78,10 @@ Install QEMU from [qemu.org](https://www.qemu.org/download/), grab a prebuilt
 
 ```
 # Default target is qemu-virt
-make
-make run
+make                # build kernel.elf + kernel.img
+make run            # boot in a QEMU window (graphical, ramfb)
+make run-serial     # boot to a serial console in the terminal
+make screenshot     # boot headless and dump the framebuffer to PNG
 
 # Raspberry Pi 5 image
 make BOARD=raspi5
@@ -97,18 +112,24 @@ make BOARD=raspi5
 hobby-os/
 ├── Makefile
 ├── README.md
+├── assets/
+│   └── qemu-hello-world.png
 ├── src/
 │   ├── boot.S           # AArch64 entry, stack + .bss setup
 │   ├── kernel.c         # kernel_main
 │   ├── uart.c, uart.h   # PL011 driver
+│   ├── fb.c, fb.h       # ramfb framebuffer + glyph drawing
+│   ├── fw_cfg.c, fw_cfg.h  # QEMU fw_cfg DMA client
+│   ├── font.c, font.h   # tiny 8x8 bitmap glyphs
 │   └── board/
-│       ├── qemu-virt.h  # UART_BASE for QEMU virt
+│       ├── qemu-virt.h  # UART_BASE + BOARD_HAS_RAMFB
 │       └── raspi5.h     # UART_BASE for Pi 5
 ├── linker/
 │   ├── qemu-virt.ld     # load at 0x40000000
 │   └── raspi5.ld        # load at 0x80000
 └── scripts/
-    └── run-qemu.sh
+    ├── run-qemu.sh
+    └── screenshot.sh
 ```
 
 ## Roadmap

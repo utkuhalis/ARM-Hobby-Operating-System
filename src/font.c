@@ -1,0 +1,52 @@
+#include "font.h"
+
+static const uint8_t glyph_blank[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+static const uint8_t glyph_space[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+static const uint8_t glyph_comma[8] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x30,
+};
+
+static const uint8_t glyph_H[8] = {
+    0xC3, 0xC3, 0xC3, 0xFF, 0xC3, 0xC3, 0xC3, 0x00,
+};
+
+static const uint8_t glyph_W[8] = {
+    0xC3, 0xC3, 0xC3, 0xDB, 0xFF, 0xFF, 0x66, 0x00,
+};
+
+static const uint8_t glyph_d[8] = {
+    0x03, 0x03, 0x7F, 0xC3, 0xC3, 0xC3, 0x7F, 0x00,
+};
+
+static const uint8_t glyph_e[8] = {
+    0x00, 0x00, 0x7E, 0xC3, 0xFF, 0xC0, 0x7E, 0x00,
+};
+
+static const uint8_t glyph_l[8] = {
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0x00,
+};
+
+static const uint8_t glyph_o[8] = {
+    0x00, 0x00, 0x7E, 0xC3, 0xC3, 0xC3, 0x7E, 0x00,
+};
+
+static const uint8_t glyph_r[8] = {
+    0x00, 0x00, 0xFC, 0xC6, 0xC0, 0xC0, 0xC0, 0x00,
+};
+
+const uint8_t *font_8x8_glyph(char c) {
+    switch (c) {
+    case ' ':  return glyph_space;
+    case ',':  return glyph_comma;
+    case 'H':  return glyph_H;
+    case 'W':  return glyph_W;
+    case 'd':  return glyph_d;
+    case 'e':  return glyph_e;
+    case 'l':  return glyph_l;
+    case 'o':  return glyph_o;
+    case 'r':  return glyph_r;
+    default:   return glyph_blank;
+    }
+}
