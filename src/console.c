@@ -9,6 +9,7 @@
 
 #ifdef BOARD_HAS_GIC
 #include "virtio_input.h"
+#include "task.h"
 #endif
 
 void console_putc(char c) {
@@ -43,6 +44,13 @@ static char console_input_getc(void) {
     for (;;) {
 #ifdef BOARD_HAS_GIC
         char c;
+        if (vinput_read_char(&c)) {
+            return c;
+        }
+        if (uart_has_input()) {
+            return uart_getc();
+        }
+        task_yield();
         if (vinput_read_char(&c)) {
             return c;
         }

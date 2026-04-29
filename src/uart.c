@@ -84,13 +84,19 @@ void uart_puts(const char *s) {
     }
 }
 
+#ifdef BOARD_HAS_GIC
+extern void task_yield(void);
+#endif
+
 char uart_getc(void) {
 #ifdef BOARD_HAS_GIC
     uint8_t c;
-    while (!rx_pop(&c)) {
+    for (;;) {
+        if (rx_pop(&c)) return (char)c;
+        task_yield();
+        if (rx_pop(&c)) return (char)c;
         __asm__ volatile("wfi");
     }
-    return (char)c;
 #else
     while (UART_FR & FR_RXFE) {
     }

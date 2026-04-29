@@ -11,6 +11,7 @@
 #include "timer.h"
 #include "virtio_input.h"
 #include "mmu.h"
+#include "task.h"
 #endif
 
 #ifdef BOARD_HAS_RAMFB
@@ -89,6 +90,12 @@ static void post(void) {
     console_puts("                 caches enabled (I+D)\n");
 
     delay_ms(150);
+    console_puts("[ OK ] Heap      kalloc/kfree on a 2 MiB pool\n");
+
+    delay_ms(150);
+    console_puts("[ OK ] Scheduler cooperative round-robin (yield-driven)\n");
+
+    delay_ms(150);
     console_printf("[ OK ] Interrupt GIC v2 distributor + CPU iface\n");
     console_printf("                 system tick at %u Hz, CPU now sleeps when idle\n",
                    timer_hz());
@@ -115,6 +122,23 @@ static void post(void) {
     console_puts("----------------------------------------------------------------\n\n");
 }
 
+#ifdef BOARD_HAS_GIC
+static volatile uint64_t ticker_beats;
+
+static void ticker_thread(void *arg) {
+    (void)arg;
+    for (;;) {
+        ticker_beats++;
+        task_yield();
+        __asm__ volatile("wfi");
+    }
+}
+
+uint64_t kernel_ticker_beats(void) {
+    return ticker_beats;
+}
+#endif
+
 void kernel_main(void) {
     heap_init();
     fs_init();
@@ -140,9 +164,15 @@ void kernel_main(void) {
 
 #ifdef BOARD_HAS_GIC
     irq_enable();
+    task_init();
 #endif
 
     post();
+
+#ifdef BOARD_HAS_GIC
+    task_spawn("ticker", ticker_thread, NULL);
+#endif
+
     shell_run();
 
     for (;;) {

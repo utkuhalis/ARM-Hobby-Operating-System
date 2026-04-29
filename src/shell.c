@@ -9,6 +9,7 @@
 
 #ifdef BOARD_HAS_GIC
 #include "timer.h"
+#include "task.h"
 #endif
 
 #define LINE_MAX  256
@@ -40,6 +41,9 @@ static void cmd_touch(int argc, char **argv);
 static void cmd_rm(int argc, char **argv);
 static void cmd_halt(int argc, char **argv);
 static void cmd_reboot(int argc, char **argv);
+#ifdef BOARD_HAS_GIC
+static void cmd_ps(int argc, char **argv);
+#endif
 
 static const struct cmd cmds[] = {
     {"help",    cmd_help,    "list commands"},
@@ -54,6 +58,9 @@ static const struct cmd cmds[] = {
     {"cpuinfo", cmd_cpuinfo, "CPU and core info"},
     {"meminfo", cmd_meminfo, "memory layout"},
     {"uptime",  cmd_uptime,  "show uptime"},
+#ifdef BOARD_HAS_GIC
+    {"ps",      cmd_ps,      "list kernel tasks"},
+#endif
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
     {0, 0, 0},
@@ -216,6 +223,28 @@ static void cmd_rm(int argc, char **argv) {
         console_printf("no such file: %s\n", argv[1]);
     }
 }
+
+#ifdef BOARD_HAS_GIC
+static const char *task_state_str(int s) {
+    switch (s) {
+    case 0: return "ready";
+    case 1: return "running";
+    case 2: return "dead";
+    default: return "?";
+    }
+}
+
+static void cmd_ps(int argc, char **argv) {
+    (void)argc; (void)argv;
+    task_t *t = task_first();
+    console_printf("  %-4s %-16s %-8s\n", "id", "name", "state");
+    while (t) {
+        console_printf("  %-4d %-16s %-8s\n",
+                       t->id, t->name, task_state_str(t->state));
+        t = t->next;
+    }
+}
+#endif
 
 static void cmd_halt(int argc, char **argv) {
     (void)argc; (void)argv;
