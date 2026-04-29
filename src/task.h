@@ -21,11 +21,17 @@ typedef struct task {
     void        (*entry)(void *);
     void         *arg;
     uint64_t      ran_ticks;
+    int           is_user;
+    void        (*user_entry)(void);
+    void         *user_stack;
+    uint32_t      user_stack_size;
     struct task  *next;
 } task_t;
 
 void  task_init(void);
 int   task_spawn(const char *name, void (*entry)(void *), void *arg);
+int   task_spawn_user(const char *name, void (*entry)(void),
+                      void *user_stack, uint32_t user_stack_size);
 void  task_yield(void);
 void  task_exit(void);
 

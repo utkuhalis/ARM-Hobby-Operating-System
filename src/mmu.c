@@ -21,7 +21,7 @@
 #define DESC_VALID   0x1ULL
 #define DESC_AF      (1ULL << 10)
 #define DESC_SH_IS   (3ULL << 8)
-#define DESC_AP_RW   (0ULL << 6)
+#define DESC_AP_RW   (0ULL << 6)  /* AP[2:1]=00 -> EL1 RW only */
 #define DESC_ATTR(n) ((uint64_t)(n) << 2)
 
 #define TCR_T0SZ_25  25

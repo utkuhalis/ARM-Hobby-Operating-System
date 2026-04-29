@@ -37,6 +37,24 @@ static void task_trampoline(void) {
     task_exit();
 }
 
+void user_trampoline(void) {
+    task_t *t = current;
+    uint64_t entry = (uint64_t)(uintptr_t)t->user_entry;
+    uint64_t stack = (uint64_t)(uintptr_t)t->user_stack +
+                     t->user_stack_size;
+
+    __asm__ volatile(
+        "msr sp_el0,   %0\n"
+        "msr elr_el1,  %1\n"
+        "msr spsr_el1, xzr\n"
+        "isb\n"
+        "eret\n"
+        : : "r"(stack), "r"(entry)
+        : "memory"
+    );
+    __builtin_unreachable();
+}
+
 void task_init(void) {
     bootstrap.sp         = 0;
     bootstrap.state      = TASK_RUNNING;
@@ -78,6 +96,38 @@ int task_spawn(const char *name, void (*entry)(void *), void *arg) {
     t->arg        = arg;
     t->ran_ticks  = 0;
     t->next       = NULL;
+
+    list_append(t);
+    return t->id;
+}
+
+extern void user_trampoline(void);
+
+int task_spawn_user(const char *name, void (*entry)(void),
+                    void *user_stack, uint32_t user_stack_size) {
+    task_t *t = (task_t *)kalloc(sizeof(task_t));
+    if (!t) return -1;
+    t->stack = kalloc(TASK_STACK_SIZE);
+    if (!t->stack) { kfree(t); return -1; }
+
+    uint64_t *sp = (uint64_t *)((uint8_t *)t->stack + TASK_STACK_SIZE);
+    sp -= 12;
+    for (int i = 0; i < 11; i++) sp[i] = 0;
+    sp[11] = (uint64_t)(uintptr_t)user_trampoline;
+
+    t->sp              = (uint64_t)(uintptr_t)sp;
+    t->state           = TASK_READY;
+    t->id              = next_id++;
+    copy_name(t->name, name);
+    t->stack_size      = TASK_STACK_SIZE;
+    t->entry           = NULL;
+    t->arg             = NULL;
+    t->ran_ticks       = 0;
+    t->is_user         = 1;
+    t->user_entry      = entry;
+    t->user_stack      = user_stack;
+    t->user_stack_size = user_stack_size;
+    t->next            = NULL;
 
     list_append(t);
     return t->id;

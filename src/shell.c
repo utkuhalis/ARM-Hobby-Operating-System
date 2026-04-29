@@ -10,6 +10,8 @@
 #ifdef BOARD_HAS_GIC
 #include "timer.h"
 #include "task.h"
+#include "heap.h"
+#include "user_program.h"
 #endif
 
 #define LINE_MAX  256
@@ -43,6 +45,7 @@ static void cmd_halt(int argc, char **argv);
 static void cmd_reboot(int argc, char **argv);
 #ifdef BOARD_HAS_GIC
 static void cmd_ps(int argc, char **argv);
+static void cmd_run(int argc, char **argv);
 #endif
 
 static const struct cmd cmds[] = {
@@ -60,6 +63,7 @@ static const struct cmd cmds[] = {
     {"uptime",  cmd_uptime,  "show uptime"},
 #ifdef BOARD_HAS_GIC
     {"ps",      cmd_ps,      "list kernel tasks"},
+    {"run",     cmd_run,     "run a built-in user program (try 'run hello')"},
 #endif
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
@@ -235,6 +239,25 @@ static const char *task_state_str(int s) {
 }
 
 extern uint64_t kernel_ticker_beats(void);
+
+static void cmd_run(int argc, char **argv) {
+    if (argc < 2) {
+        console_puts("usage: run <program>\n");
+        console_puts("  programs: hello\n");
+        return;
+    }
+    if (strcmp(argv[1], "hello") == 0) {
+        int id = task_spawn("hello", (void (*)(void *))user_main_hello, NULL);
+        if (id < 0) {
+            console_puts("run: spawn failed\n");
+            return;
+        }
+        console_printf("spawned task id %d (kernel mode, syscalls via SVC)\n", id);
+        for (int i = 0; i < 6; i++) task_yield();
+    } else {
+        console_printf("unknown program: %s\n", argv[1]);
+    }
+}
 
 static void cmd_ps(int argc, char **argv) {
     (void)argc; (void)argv;
