@@ -5,6 +5,8 @@
 #include "fs.h"
 #include "sysinfo.h"
 #include "heap.h"
+#include "accounts.h"
+#include "pkgmgr.h"
 #ifdef BOARD_HAS_GIC
 #include "exceptions.h"
 #include "gic.h"
@@ -237,6 +239,8 @@ uint64_t kernel_ticker_beats(void) {
 void kernel_main(void) {
     heap_init();
     fs_init();
+    accounts_init();
+    pkg_init();
 
 #ifdef BOARD_HAS_GIC
     mmu_init();

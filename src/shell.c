@@ -6,11 +6,12 @@
 #include "sysinfo.h"
 #include "psci.h"
 #include "heap.h"
+#include "accounts.h"
+#include "pkgmgr.h"
 
 #ifdef BOARD_HAS_GIC
 #include "timer.h"
 #include "task.h"
-#include "heap.h"
 #include "user_program.h"
 #include "virtio_net.h"
 #endif
@@ -44,6 +45,11 @@ static void cmd_touch(int argc, char **argv);
 static void cmd_rm(int argc, char **argv);
 static void cmd_halt(int argc, char **argv);
 static void cmd_reboot(int argc, char **argv);
+static void cmd_whoami(int argc, char **argv);
+static void cmd_login(int argc, char **argv);
+static void cmd_logout(int argc, char **argv);
+static void cmd_users(int argc, char **argv);
+static void cmd_pkg(int argc, char **argv);
 #ifdef BOARD_HAS_GIC
 static void cmd_ps(int argc, char **argv);
 static void cmd_run(int argc, char **argv);
@@ -72,6 +78,11 @@ static const struct cmd cmds[] = {
     {"load",    cmd_load,    "reload filesystem from virtio-blk disk"},
     {"ifconfig",cmd_ifconfig,"show network interface info"},
 #endif
+    {"whoami",  cmd_whoami,  "show the current account"},
+    {"login",   cmd_login,   "login <name> <password>"},
+    {"logout",  cmd_logout,  "log out the current user"},
+    {"users",   cmd_users,   "list known accounts"},
+    {"pkg",     cmd_pkg,     "package manager (list/install/remove)"},
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
     {0, 0, 0},
@@ -280,26 +291,20 @@ static void cmd_run(int argc, char **argv) {
         console_puts("  programs: hello\n");
         return;
     }
-    struct app { const char *name; void (*fn)(void); };
-    static const struct app apps[] = {
-        {"hello",   user_main_hello},
-        {"counter", user_main_counter},
-        {"clock",   user_main_clock},
-        {"load",    user_main_load},
-        {0, 0},
-    };
-    for (int i = 0; apps[i].name; i++) {
-        if (strcmp(argv[1], apps[i].name) == 0) {
-            int id = task_spawn(apps[i].name,
-                                (void (*)(void *))apps[i].fn, NULL);
-            if (id < 0) { console_puts("run: spawn failed\n"); return; }
-            console_printf("spawned task id %d (%s)\n", id, apps[i].name);
-            for (int y = 0; y < 8; y++) task_yield();
-            return;
+    void (*fn)(void) = pkg_entry_by_name(argv[1]);
+    if (!fn) {
+        if (pkg_index_of(argv[1]) < 0) {
+            console_printf("run: unknown program '%s' (try 'pkg list')\n", argv[1]);
+        } else {
+            console_printf("run: '%s' is not installed (try 'pkg install %s')\n",
+                           argv[1], argv[1]);
         }
+        return;
     }
-    console_printf("unknown program: %s\n", argv[1]);
-    console_puts("available: hello counter clock load\n");
+    int id = task_spawn(argv[1], (void (*)(void *))fn, NULL);
+    if (id < 0) { console_puts("run: spawn failed\n"); return; }
+    console_printf("spawned task id %d (%s)\n", id, argv[1]);
+    for (int y = 0; y < 8; y++) task_yield();
 }
 
 static void cmd_ps(int argc, char **argv) {
@@ -315,6 +320,72 @@ static void cmd_ps(int argc, char **argv) {
     console_printf("kernel ticks   : %lu\n", timer_ticks());
 }
 #endif
+
+static void cmd_whoami(int argc, char **argv) {
+    (void)argc; (void)argv;
+    console_printf("%s\n", account_current());
+}
+
+static void cmd_login(int argc, char **argv) {
+    if (argc < 3) {
+        console_puts("usage: login <name> <password>\n");
+        return;
+    }
+    int r = account_login(argv[1], argv[2]);
+    if (r == 0)       console_printf("logged in as %s\n", account_current());
+    else if (r == -1) console_puts("login: no such user\n");
+    else              console_puts("login: bad password\n");
+}
+
+static void cmd_logout(int argc, char **argv) {
+    (void)argc; (void)argv;
+    account_logout();
+    console_puts("logged out\n");
+}
+
+static void cmd_users(int argc, char **argv) {
+    (void)argc; (void)argv;
+    int n = account_count();
+    for (int i = 0; i < n; i++) {
+        const char *u = account_at(i);
+        console_printf("  %s%s\n", u,
+                       (strcmp(u, account_current()) == 0) ? "  (active)" : "");
+    }
+}
+
+static void cmd_pkg(int argc, char **argv) {
+    if (argc < 2) {
+        console_puts("usage: pkg list | install <name> | remove <name>\n");
+        return;
+    }
+    if (strcmp(argv[1], "list") == 0) {
+        int n = pkg_count();
+        console_printf("  %-10s %-10s %s\n", "name", "state", "summary");
+        for (int i = 0; i < n; i++) {
+            console_printf("  %-10s %-10s %s\n",
+                           pkg_name_at(i),
+                           pkg_is_installed(i) ? "installed" : "available",
+                           pkg_summary_at(i));
+        }
+        return;
+    }
+    if (argc < 3) { console_puts("pkg: missing package name\n"); return; }
+    if (strcmp(argv[1], "install") == 0) {
+        if (pkg_install_by_name(argv[2]) == 0)
+            console_printf("installed %s\n", argv[2]);
+        else
+            console_printf("pkg: unknown package %s\n", argv[2]);
+        return;
+    }
+    if (strcmp(argv[1], "remove") == 0) {
+        if (pkg_remove_by_name(argv[2]) == 0)
+            console_printf("removed %s\n", argv[2]);
+        else
+            console_printf("pkg: unknown package %s\n", argv[2]);
+        return;
+    }
+    console_printf("pkg: unknown subcommand %s\n", argv[1]);
+}
 
 static void cmd_halt(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -349,7 +420,7 @@ void shell_run(void) {
     static char *argv[ARGV_MAX];
 
     for (;;) {
-        console_puts("hobby# ");
+        console_printf("%s@hobby# ", account_current());
         int n = console_readline(line, sizeof(line));
         if (n < 0) continue;
 
