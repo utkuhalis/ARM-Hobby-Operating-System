@@ -2,8 +2,12 @@
 
 A minimal, hand-rolled AArch64 kernel built from scratch for fun and learning.
 
-It boots, draws "Hello, World" onto a framebuffer, and drops you into a tiny
-interactive shell with a RAM-backed filesystem and a handful of system commands.
+It boots like a tiny PC: HobbyBIOS POST screen lists the detected CPU,
+memory, framebuffer, storage, console, MMU, heap, scheduler, GIC, virtio
+keyboard / block / network and PSCI power services line by line, then
+drops into an interactive shell with a multi-task scheduler, a syscall
+dispatcher, a built-in package manager and account system, and a small
+catalog of user-style programs you can `run`.
 
 The same source tree builds for two targets:
 
@@ -213,18 +217,31 @@ hobby-os/
 
 ## Roadmap
 
-- [x] GIC + timer interrupts (Phase A)
-- [x] virtio-keyboard (Phase B, host keyboard goes straight to the shell)
-- [ ] virtio-mouse + cursor
-- [ ] MMU + paging + user mode (EL0)
-- [ ] A real heap allocator
-- [ ] Cooperative, then pre-emptive scheduler
-- [ ] Wake secondary cores via PSCI `CPU_ON`
-- [ ] Persistent storage (virtio-blk + a real filesystem)
-- [ ] User-mode processes + a window manager
-- [ ] virtio-net + minimum TCP/IP
-- [ ] User accounts + a tiny package manager
-- [ ] Pi 5 framebuffer + Pi 5 GIC port
+Phases delivered so far:
+
+- [x] **A** GIC v2 + ARM generic timer + PL011 RX interrupts
+- [x] **B** virtio-keyboard (host keyboard goes straight to the shell)
+- [x] **C** MMU identity map, kernel heap, cooperative scheduler with
+       idle/ticker/status threads, SVC syscall dispatcher, first user-style
+       program
+- [x] **D** Live framebuffer status bar + multiple built-in apps
+- [x] **E** virtio-blk device discovery + filesystem save/load surface
+       (write submit path still WIP)
+- [x] **F** virtio-net device discovery + MAC reading + `ifconfig`
+- [x] **G** User accounts (login / whoami / logout) + a built-in
+       package manager (`pkg list/install/remove`)
+
+Open work, in rough order:
+
+- [ ] Pull AP=01 page permissions out of the 1 GiB blocks so user
+      programs can really run at EL0 with isolation
+- [ ] Finish the virtio-blk write submit path, then wire `save`/`load`
+      back up automatically
+- [ ] Real TCP/IP stack on top of the virtio-net link layer
+- [ ] virtio-mouse + a click/focus model so the framebuffer becomes
+      a real window manager
+- [ ] Wake secondary cores via PSCI `CPU_ON` and ship a SMP scheduler
+- [ ] Pi 5 GIC port (different distributor / CPU iface base addresses)
 
 ## License
 
