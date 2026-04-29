@@ -21,7 +21,7 @@ fi
     sleep 1
     echo "quit"
 ) | qemu-system-aarch64 \
-        -M virt -cpu cortex-a72 -m 256M \
+        -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
         -device ramfb \
         -display none \
         -monitor stdio \

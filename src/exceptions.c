@@ -1,0 +1,49 @@
+#include <stdint.h>
+#include "exceptions.h"
+#include "console.h"
+#include "gic.h"
+#include "timer.h"
+#include "uart.h"
+
+#define IRQ_TIMER_PHYS 30
+#define IRQ_UART_PL011 33
+
+extern uint8_t vectors[];
+
+void exceptions_init(void) {
+    __asm__ volatile("msr vbar_el1, %0" :: "r"((uint64_t)(uintptr_t)vectors));
+    __asm__ volatile("isb");
+}
+
+void irq_enable(void) {
+    __asm__ volatile("msr daifclr, #0x2" ::: "memory");
+}
+
+void irq_disable(void) {
+    __asm__ volatile("msr daifset, #0x2" ::: "memory");
+}
+
+void irq_handler(void) {
+    uint32_t iar = gic_iar();
+    uint32_t irq = iar & 0x3ffu;
+
+    switch (irq) {
+    case IRQ_TIMER_PHYS:
+        timer_tick();
+        break;
+    case IRQ_UART_PL011:
+        uart_irq();
+        break;
+    default:
+        break;
+    }
+
+    gic_eoi(iar);
+}
+
+void panic_unhandled(void) {
+    console_puts("\n!! UNHANDLED EXCEPTION - halted !!\n");
+    for (;;) {
+        __asm__ volatile("wfi");
+    }
+}

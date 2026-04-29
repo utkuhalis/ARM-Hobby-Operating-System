@@ -18,6 +18,12 @@ _start:
     b       .Lbss_loop
 .Lbss_done:
 
+#ifdef BOARD_HAS_GIC
+    ldr     x0, =vectors
+    msr     vbar_el1, x0
+    isb
+#endif
+
     bl      kernel_main
 
 .Lhalt:

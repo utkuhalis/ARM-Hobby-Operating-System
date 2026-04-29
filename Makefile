@@ -19,11 +19,13 @@ CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
            $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c
 
 ifeq ($(BOARD),qemu-virt)
-C_SRCS  := $(CORE_C) $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/fw_cfg.c $(SRC)/font.c
+C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
+           $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/fw_cfg.c $(SRC)/font.c
+S_SRCS  := $(SRC)/boot.S $(SRC)/vectors.S
 else
 C_SRCS  := $(CORE_C)
+S_SRCS  := $(SRC)/boot.S
 endif
-S_SRCS  := $(wildcard $(SRC)/*.S)
 OBJS    := $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(C_SRCS)) \
            $(patsubst $(SRC)/%.S,$(BUILD)/%.o,$(S_SRCS))
 
@@ -59,7 +61,7 @@ $(IMG): $(ELF)
 $(PI_IMG): $(IMG)
 	cp $< $@
 
-QEMU_BASE := -M virt -cpu cortex-a72 -m 256M -device ramfb
+QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -m 256M -device ramfb
 
 run: $(ELF)
 	qemu-system-aarch64 $(QEMU_BASE) -display none -serial stdio -kernel $<

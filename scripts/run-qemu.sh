@@ -12,8 +12,9 @@ if [ ! -f "${ELF}" ]; then
 fi
 
 exec qemu-system-aarch64 \
-    -M virt \
+    -M virt,gic-version=2 \
     -cpu cortex-a72 \
-    -m 128M \
+    -m 256M \
+    -device ramfb \
     -nographic \
     -kernel "${ELF}"

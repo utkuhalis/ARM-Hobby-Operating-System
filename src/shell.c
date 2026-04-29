@@ -6,6 +6,10 @@
 #include "sysinfo.h"
 #include "psci.h"
 
+#ifdef BOARD_HAS_GIC
+#include "timer.h"
+#endif
+
 #define LINE_MAX  256
 #define ARGV_MAX  16
 
@@ -123,7 +127,12 @@ static void cmd_meminfo(int argc, char **argv) {
 static void cmd_uptime(int argc, char **argv) {
     (void)argc; (void)argv;
     uint64_t s = sys_uptime_seconds();
+#ifdef BOARD_HAS_GIC
+    console_printf("up %lu seconds  (%lu kernel ticks @ %u Hz)\n",
+                   s, timer_ticks(), timer_hz());
+#else
     console_printf("up %lu seconds\n", s);
+#endif
 }
 
 static void cmd_ls(int argc, char **argv) {

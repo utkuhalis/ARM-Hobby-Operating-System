@@ -4,6 +4,11 @@
 #include "shell.h"
 #include "fs.h"
 #include "sysinfo.h"
+#ifdef BOARD_HAS_GIC
+#include "exceptions.h"
+#include "gic.h"
+#include "timer.h"
+#endif
 
 #ifdef BOARD_HAS_RAMFB
 #include "fb.h"
@@ -40,7 +45,7 @@ static void post(void) {
 
     console_puts("\n");
     console_puts("================================================================\n");
-    console_printf(" HobbyBIOS v0.3  (board: %s)\n", sys_board_name());
+    console_printf(" HobbyBIOS v0.4  (board: %s)\n", sys_board_name());
     console_puts(" (c) 2026  Hobby ARM Operating System\n");
     console_puts("================================================================\n\n");
 
@@ -72,11 +77,20 @@ static void post(void) {
     console_puts("                 (volatile - contents lost on reboot)\n");
 
     delay_ms(150);
-    console_printf("[ OK ] Console   PL011 UART @ 0x%lx\n", (uint64_t)UART_BASE);
-    console_puts("                 line editor with echo and backspace\n");
+    console_printf("[ OK ] Console   PL011 UART @ 0x%lx (RX interrupt enabled)\n",
+                   (uint64_t)UART_BASE);
 
     delay_ms(150);
-    console_puts("[ OK ] Power      PSCI hypercalls: SYSTEM_OFF, SYSTEM_RESET\n");
+#ifdef BOARD_HAS_GIC
+    console_printf("[ OK ] Interrupt GIC v2 distributor + CPU iface\n");
+    console_printf("                 system tick at %u Hz, CPU now sleeps when idle\n",
+                   timer_hz());
+#else
+    console_puts("[ -- ] Interrupt (no GIC driver on this board, polling UART)\n");
+#endif
+
+    delay_ms(150);
+    console_puts("[ OK ] Power     PSCI hypercalls: SYSTEM_OFF, SYSTEM_RESET\n");
 
     delay_ms(200);
     console_puts("\n----------------------------------------------------------------\n");
@@ -85,13 +99,27 @@ static void post(void) {
 }
 
 void kernel_main(void) {
-    uart_init();
     fs_init();
+
+#ifdef BOARD_HAS_GIC
+    exceptions_init();
+    gic_init();
+#endif
+
+    uart_init();
+
+#ifdef BOARD_HAS_GIC
+    timer_init(100);
+#endif
 
 #ifdef BOARD_HAS_RAMFB
     if (fb_init() == 0) {
         fb_console_init(BG_COLOR, FG_COLOR);
     }
+#endif
+
+#ifdef BOARD_HAS_GIC
+    irq_enable();
 #endif
 
     post();
