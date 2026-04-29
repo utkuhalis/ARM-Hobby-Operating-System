@@ -231,17 +231,28 @@ Phases delivered so far:
 - [x] **G** User accounts (login / whoami / logout) + a built-in
        package manager (`pkg list/install/remove`)
 
+Scaffolding now in place (each one started, not all complete):
+
+- [~] virtio-mouse + framebuffer cursor sprite (mouse moves the
+      cursor in real time when the QEMU window has focus)
+- [~] PSCI `CPU_ON` secondary-core wakeup + per-CPU stacks
+      (kernel POSTs an SMP line; full SMP scheduler is the follow-up)
+- [~] AArch64 ELF64 loader (`elfinfo` validates and inspects ELF
+      files in the RAM fs; jumping into them needs the EL0 fix)
+- [~] Pi 5 GIC + UART IRQ numbers in board header (port still
+      compile-out until real-hardware bring-up)
+
 Open work, in rough order:
 
 - [ ] Pull AP=01 page permissions out of the 1 GiB blocks so user
       programs can really run at EL0 with isolation
-- [ ] Finish the virtio-blk write submit path, then wire `save`/`load`
-      back up automatically
+- [ ] Finish the virtio-blk write submit path so `save`/`load`
+      land bytes on disk
 - [ ] Real TCP/IP stack on top of the virtio-net link layer
-- [ ] virtio-mouse + a click/focus model so the framebuffer becomes
-      a real window manager
-- [ ] Wake secondary cores via PSCI `CPU_ON` and ship a SMP scheduler
-- [ ] Pi 5 GIC port (different distributor / CPU iface base addresses)
+- [ ] Per-CPU run queues so the secondaries from CPU_ON actually
+      schedule tasks instead of parking in WFI
+- [ ] Wire the ELF loader through `run <name>` once we have a
+      proper user-mode loader path
 
 ## License
 
