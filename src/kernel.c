@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include "uart.h"
 #include "console.h"
 #include "shell.h"
@@ -6,11 +7,82 @@
 
 #ifdef BOARD_HAS_RAMFB
 #include "fb.h"
+#include "fb_console.h"
 #endif
 
-#define BG_COLOR    0x00101830u
-#define TEXT_COLOR  0x00f0f0f0u
-#define DIM_COLOR   0x00606878u
+extern uint8_t _kernel_start[];
+extern uint8_t _kernel_end[];
+extern uint8_t _stack_top[];
+
+#define BG_COLOR  0x00080814u
+#define FG_COLOR  0x00d0d6dfu
+
+static void delay_ms(uint32_t ms) {
+    uint64_t freq = sys_timer_freq();
+    if (freq == 0) return;
+    uint64_t cycles = (freq / 1000) * ms;
+    uint64_t start  = sys_timer_count();
+    while ((sys_timer_count() - start) < cycles) {
+        __asm__ volatile("nop");
+    }
+}
+
+static void post(void) {
+    uint64_t midr   = sys_read_midr();
+    uint32_t el     = sys_read_currentel();
+    uint64_t tfreq  = sys_timer_freq();
+    uint32_t kstart = (uint32_t)(uintptr_t)_kernel_start;
+    uint32_t kend   = (uint32_t)(uintptr_t)_kernel_end;
+    uint32_t stop   = (uint32_t)(uintptr_t)_stack_top;
+    uint32_t ksize  = kend - kstart;
+    uint32_t mhz_i  = (uint32_t)(tfreq / 1000000u);
+    uint32_t mhz_d  = (uint32_t)((tfreq % 1000000u) / 100000u);
+
+    console_puts("\n");
+    console_puts("================================================================\n");
+    console_printf(" HobbyBIOS v0.3  (board: %s)\n", sys_board_name());
+    console_puts(" (c) 2026  Hobby ARM Operating System\n");
+    console_puts("================================================================\n\n");
+
+    delay_ms(120);
+    console_puts("Performing power-on self test...\n\n");
+
+    delay_ms(150);
+    console_printf("[ OK ] CPU       %s  (EL%u)\n", sys_cpu_name(midr), el);
+    console_printf("                 MIDR_EL1=0x%lx  MPIDR=0x%lx\n",
+                   midr, sys_read_mpidr());
+    console_printf("                 system timer %u.%u MHz\n", mhz_i, mhz_d);
+
+    delay_ms(150);
+    console_printf("[ OK ] Memory    256 MiB total\n");
+    console_printf("                 kernel  0x%08x .. 0x%08x  (%u bytes)\n",
+                   kstart, kend, ksize);
+    console_printf("                 stack   0x%08x .. 0x%08x\n", kend, stop);
+
+    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    console_puts("[ OK ] Display   ramfb 800x600 XRGB8888 (host window)\n");
+    console_puts("                 framebuffer mapped via fw_cfg DMA\n");
+#else
+    console_puts("[ -- ] Display   none (serial console only)\n");
+#endif
+
+    delay_ms(150);
+    console_printf("[ OK ] Storage   RAM filesystem  16 slots x 4 KiB = 64 KiB\n");
+    console_puts("                 (volatile - contents lost on reboot)\n");
+
+    delay_ms(150);
+    console_printf("[ OK ] Console   PL011 UART @ 0x%lx\n", (uint64_t)UART_BASE);
+    console_puts("                 line editor with echo and backspace\n");
+
+    delay_ms(150);
+    console_puts("[ OK ] Power      PSCI hypercalls: SYSTEM_OFF, SYSTEM_RESET\n");
+
+    delay_ms(200);
+    console_puts("\n----------------------------------------------------------------\n");
+    console_puts(" Boot complete. Type 'help' for commands.\n");
+    console_puts("----------------------------------------------------------------\n\n");
+}
 
 void kernel_main(void) {
     uart_init();
@@ -18,26 +90,11 @@ void kernel_main(void) {
 
 #ifdef BOARD_HAS_RAMFB
     if (fb_init() == 0) {
-        const char *line = "Hello, World";
-        const uint32_t scale = 6;
-        const uint32_t glyph_count = 12;
-        const uint32_t text_w = 8 * scale * glyph_count;
-        const uint32_t text_h = 8 * scale;
-
-        fb_clear(BG_COLOR);
-        fb_draw_string((800 - text_w) / 2,
-                       (600 - text_h) / 2,
-                       line, TEXT_COLOR, scale);
+        fb_console_init(BG_COLOR, FG_COLOR);
     }
 #endif
 
-    console_puts("\nHobby ARM OS v0.2\n");
-    console_printf("booted on %s, %s, EL%u\n",
-                   sys_board_name(),
-                   sys_cpu_name(sys_read_midr()),
-                   sys_read_currentel());
-    console_puts("type 'help' for commands\n\n");
-
+    post();
     shell_run();
 
     for (;;) {

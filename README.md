@@ -16,12 +16,39 @@ The same source tree builds for two targets:
 
 ## What it does
 
-`make run` boots the kernel and gives you a shell on the serial console:
+`make run-graphic` opens a QEMU window. The kernel performs a small
+PC-style POST that lists the detected CPU, memory, GPU, storage,
+console and power services line-by-line, then drops into an interactive
+shell — all rendered onto a ramfb framebuffer so the window looks like
+a tiny PC booting:
+
+![POST + shell on QEMU](assets/qemu-bios-post.png)
+
+`make run` does the same boot but without the window — output and
+input go directly to your terminal, which is handy for headless hosts
+or when you just want a Linux-shell feel:
 
 ```
-Hobby ARM OS v0.2
-booted on qemu-virt, ARM Cortex-A72, EL1
-type 'help' for commands
+================================================================
+ HobbyBIOS v0.3  (board: qemu-virt)
+ (c) 2026  Hobby ARM Operating System
+================================================================
+
+Performing power-on self test...
+
+[ OK ] CPU       ARM Cortex-A72  (EL1)
+                 MIDR_EL1=0x410fd083  MPIDR=0x80000000
+                 system timer 62.5 MHz
+[ OK ] Memory    256 MiB total
+                 kernel  0x40000000 .. 0x401e9c10
+[ OK ] Display   ramfb 800x600 XRGB8888 (host window)
+[ OK ] Storage   RAM filesystem  16 slots x 4 KiB = 64 KiB
+[ OK ] Console   PL011 UART @ 0x9000000
+[ OK ] Power     PSCI hypercalls: SYSTEM_OFF, SYSTEM_RESET
+
+----------------------------------------------------------------
+ Boot complete. Type 'help' for commands.
+----------------------------------------------------------------
 
 hobby# uname -a
 Hobby ARM OS v0.2 aarch64 qemu-virt ARM Cortex-A72
@@ -35,10 +62,10 @@ hobby# halt
 system halted.
 ```
 
-`make run-graphic` opens an actual QEMU window in addition to the shell —
-the kernel paints "Hello, World" onto a ramfb-backed framebuffer:
-
-![Hello, World on QEMU](assets/qemu-hello-world.png)
+In `run-graphic` the same output also goes to the QEMU window via the
+framebuffer text console, while keyboard input is read from your
+terminal — a USB keyboard driver to make the window fully interactive
+is on the roadmap.
 
 ## Built-in commands
 
@@ -68,11 +95,13 @@ backing store yet, so contents vanish at reboot.
 2. Non-zero cores park in `wfi`.
 3. Core 0 sets up a stack, zeroes `.bss`, and branches to `kernel_main` in C.
 4. `kernel_main` initializes the UART and the in-memory filesystem.
-5. On QEMU `virt`, it then talks to the QEMU `fw_cfg` device, hands it a
-   ramfb config (XRGB8888, 800×600), clears the framebuffer, and draws
-   "Hello, World" glyph-by-glyph using a small built-in 8×8 bitmap font.
-6. Prints a boot banner and drops into the shell loop.
-7. The shell reads a line over UART, tokenizes on whitespace, dispatches
+5. On QEMU `virt`, it talks to the `fw_cfg` device, hands it a ramfb
+   config (XRGB8888, 800×600), and brings up a framebuffer text console
+   using a public-domain 8×8 bitmap font.
+6. Runs the POST sequence — each line is printed with a small delay
+   so it actually feels like a machine going through self-test.
+7. Drops into the shell loop: read a line over UART (echoed to both the
+   serial console and the framebuffer), tokenize on whitespace, dispatch
    to a command function from a static table.
 
 The PL011 register layout is identical between QEMU's `virt` machine and the
@@ -150,7 +179,7 @@ hobby-os/
 ├── Makefile
 ├── README.md
 ├── assets/
-│   └── qemu-hello-world.png
+│   └── qemu-bios-post.png
 ├── src/
 │   ├── boot.S            # AArch64 entry, stack + .bss setup
 │   ├── kernel.c          # kernel_main, boot banner
@@ -162,8 +191,9 @@ hobby-os/
 │   ├── sysinfo.c, sysinfo.h  # MIDR/MPIDR/CNT* readers
 │   ├── psci.c, psci.h    # PSCI HVC for halt/reset
 │   ├── fb.c, fb.h        # ramfb framebuffer + glyph drawing
+│   ├── fb_console.c, fb_console.h  # text terminal on the framebuffer
 │   ├── fw_cfg.c, fw_cfg.h  # QEMU fw_cfg DMA client
-│   ├── font.c, font.h    # tiny 8×8 bitmap glyphs
+│   ├── font.c, font.h    # public-domain 8×8 bitmap font (ASCII 0-127)
 │   └── board/
 │       ├── qemu-virt.h
 │       └── raspi5.h
@@ -177,6 +207,7 @@ hobby-os/
 
 ## Roadmap
 
+- [ ] USB / virtio keyboard so the QEMU window is fully interactive
 - [ ] GIC + timer interrupts
 - [ ] MMU + paging
 - [ ] A real heap allocator

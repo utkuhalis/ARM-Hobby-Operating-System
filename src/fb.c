@@ -43,23 +43,46 @@ void fb_clear(uint32_t color) {
     }
 }
 
-static void fb_putpixel(uint32_t x, uint32_t y, uint32_t color) {
-    if (x < FB_WIDTH && y < FB_HEIGHT) {
-        fb_pixels()[y * FB_WIDTH + x] = color;
+void fb_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+    uint32_t *px = fb_pixels();
+    if (x >= FB_WIDTH || y >= FB_HEIGHT) return;
+    if (x + w > FB_WIDTH)  w = FB_WIDTH  - x;
+    if (y + h > FB_HEIGHT) h = FB_HEIGHT - y;
+    for (uint32_t dy = 0; dy < h; dy++) {
+        uint32_t *row = &px[(y + dy) * FB_WIDTH + x];
+        for (uint32_t dx = 0; dx < w; dx++) {
+            row[dx] = color;
+        }
     }
 }
 
-static void fb_draw_glyph(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t scale) {
+void fb_scroll_up(uint32_t pixel_rows, uint32_t bg) {
+    if (pixel_rows == 0 || pixel_rows >= FB_HEIGHT) return;
+    uint32_t *px = fb_pixels();
+    uint32_t move = (FB_HEIGHT - pixel_rows) * FB_WIDTH;
+    for (uint32_t i = 0; i < move; i++) {
+        px[i] = px[i + pixel_rows * FB_WIDTH];
+    }
+    for (uint32_t i = move; i < FB_WIDTH * FB_HEIGHT; i++) {
+        px[i] = bg;
+    }
+}
+
+void fb_draw_glyph(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t scale) {
     const uint8_t *glyph = font_8x8_glyph(c);
+    uint32_t *px = fb_pixels();
     for (uint32_t row = 0; row < 8; row++) {
         uint8_t bits = glyph[row];
         for (uint32_t col = 0; col < 8; col++) {
-            if (bits & (uint8_t)(0x80u >> col)) {
+            if (bits & (uint8_t)(1u << col)) {
                 for (uint32_t dy = 0; dy < scale; dy++) {
+                    uint32_t py = y + row * scale + dy;
+                    if (py >= FB_HEIGHT) break;
+                    uint32_t *line = &px[py * FB_WIDTH];
                     for (uint32_t dx = 0; dx < scale; dx++) {
-                        fb_putpixel(x + col * scale + dx,
-                                    y + row * scale + dy,
-                                    color);
+                        uint32_t pxs = x + col * scale + dx;
+                        if (pxs >= FB_WIDTH) break;
+                        line[pxs] = color;
                     }
                 }
             }

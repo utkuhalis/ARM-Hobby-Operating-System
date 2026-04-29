@@ -19,7 +19,7 @@ CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
            $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c
 
 ifeq ($(BOARD),qemu-virt)
-C_SRCS  := $(CORE_C) $(SRC)/fb.c $(SRC)/fw_cfg.c $(SRC)/font.c
+C_SRCS  := $(CORE_C) $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/fw_cfg.c $(SRC)/font.c
 else
 C_SRCS  := $(CORE_C)
 endif
