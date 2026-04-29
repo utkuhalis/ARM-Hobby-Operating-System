@@ -30,6 +30,7 @@ _start:
     wfi
     b       .Lhalt
 
+#ifdef BOARD_HAS_GIC
 /*
  * Secondary cores brought up via PSCI CPU_ON land here. Each core
  * picks a 16 KiB private stack from secondary_stacks indexed by its
@@ -40,19 +41,17 @@ secondary_start:
     mrs     x0, mpidr_el1
     and     x0, x0, #0xff
 
-    /* sp = &secondary_stacks[(core_id+1) * 16384] */
     ldr     x1, =secondary_stacks
     add     x2, x0, #1
     lsl     x2, x2, #14
     add     sp, x1, x2
 
-#ifdef BOARD_HAS_GIC
     ldr     x1, =vectors
     msr     vbar_el1, x1
     isb
-#endif
 
     bl      secondary_main
 .Lhalt2:
     wfi
     b       .Lhalt2
+#endif

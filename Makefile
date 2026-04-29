@@ -13,12 +13,13 @@ CFLAGS  := -ffreestanding -nostdlib -nostartfiles \
            -fno-pic -fno-stack-protector \
            -O2 -Wall -Wextra -Wpedantic -std=c11 \
            -I$(SRC) -include $(SRC)/board/$(BOARD).h
-ASFLAGS := -ffreestanding -nostdlib -nostartfiles -mcpu=cortex-a72
+ASFLAGS := -ffreestanding -nostdlib -nostartfiles -mcpu=cortex-a72 \
+           -include $(SRC)/board/$(BOARD).h
 LDFLAGS := -nostdlib -nostartfiles -Wl,-T,linker/$(BOARD).ld -Wl,--build-id=none
 
 CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
            $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c \
-           $(SRC)/heap.c $(SRC)/accounts.c $(SRC)/pkgmgr.c
+           $(SRC)/heap.c $(SRC)/accounts.c $(SRC)/pkgmgr.c $(SRC)/elf.c
 
 ifeq ($(BOARD),qemu-virt)
 C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \

@@ -8,6 +8,7 @@
 #include "heap.h"
 #include "accounts.h"
 #include "pkgmgr.h"
+#include "elf.h"
 
 #ifdef BOARD_HAS_GIC
 #include "timer.h"
@@ -50,6 +51,7 @@ static void cmd_login(int argc, char **argv);
 static void cmd_logout(int argc, char **argv);
 static void cmd_users(int argc, char **argv);
 static void cmd_pkg(int argc, char **argv);
+static void cmd_elfinfo(int argc, char **argv);
 #ifdef BOARD_HAS_GIC
 static void cmd_ps(int argc, char **argv);
 static void cmd_run(int argc, char **argv);
@@ -83,6 +85,7 @@ static const struct cmd cmds[] = {
     {"logout",  cmd_logout,  "log out the current user"},
     {"users",   cmd_users,   "list known accounts"},
     {"pkg",     cmd_pkg,     "package manager (list/install/remove)"},
+    {"elfinfo", cmd_elfinfo, "inspect an ELF file in the RAM filesystem"},
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
     {0, 0, 0},
@@ -385,6 +388,29 @@ static void cmd_pkg(int argc, char **argv) {
         return;
     }
     console_printf("pkg: unknown subcommand %s\n", argv[1]);
+}
+
+static void cmd_elfinfo(int argc, char **argv) {
+    if (argc < 2) {
+        console_puts("usage: elfinfo <filename>\n");
+        return;
+    }
+    fs_file_t *f = fs_find(argv[1]);
+    if (!f) {
+        console_printf("elfinfo: no such file: %s\n", argv[1]);
+        return;
+    }
+    struct elf_image img;
+    int r = elf_inspect(f->data, f->size, &img);
+    if (r != 0) {
+        console_printf("elfinfo: not a valid AArch64 ELF (%d)\n", r);
+        return;
+    }
+    console_printf("ELF64  AArch64\n");
+    console_printf("  entry      0x%lx\n", img.entry);
+    console_printf("  vaddr range  0x%lx .. 0x%lx\n",
+                   img.lowest_va, img.highest_va);
+    console_printf("  file size  %u bytes\n", f->size);
 }
 
 static void cmd_halt(int argc, char **argv) {
