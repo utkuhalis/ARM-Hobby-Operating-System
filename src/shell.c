@@ -260,9 +260,9 @@ extern uint64_t kernel_ticker_beats(void);
 
 static void cmd_save(int argc, char **argv) {
     (void)argc; (void)argv;
-    console_puts("save: virtio-blk write path is wired but the request "
-                 "submit handshake is still hanging in QEMU; tracking as a "
-                 "known issue and treating disk as read-only for now.\n");
+    int r = fs_save();
+    if (r == 0) console_puts("filesystem saved to disk\n");
+    else console_printf("save failed (%d)\n", r);
 }
 
 static void cmd_load(int argc, char **argv) {

@@ -139,12 +139,13 @@ static int submit_and_wait(uint32_t type, uint64_t sector, void *data, int is_wr
     io_pending = 1;
     vio_write32(&dev, MMIO_QUEUE_NOTIFY, 0);
 
+    /* short spin; if the device never consumes the request, give up */
     uint64_t spin = 0;
-    while (blkio.status == 0xff) {
-        if (++spin > 200000000ull) return -1;
+    uint16_t target_used = vqavail.idx;
+    while (blkio.status == 0xff && vqused.idx != target_used) {
+        if (++spin > 5000000ull) return -1;
         __asm__ volatile("yield");
     }
-
     if (blkio.status != 0) return -2;
 
     if (!is_write) {
