@@ -25,6 +25,7 @@ fi
         -device ramfb -device virtio-keyboard-device \
         -drive file="${ROOT}/build/disk.img",if=none,format=raw,id=hd0 \
         -device virtio-blk-device,drive=hd0 \
+        -netdev user,id=n0 -device virtio-net-device,netdev=n0 \
         -display none \
         -monitor stdio \
         -serial null \

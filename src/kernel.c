@@ -11,6 +11,7 @@
 #include "timer.h"
 #include "virtio_input.h"
 #include "virtio_blk.h"
+#include "virtio_net.h"
 #include "mmu.h"
 #include "task.h"
 #endif
@@ -120,6 +121,17 @@ static void post(void) {
         console_puts("                 driver attached; persistence WIP\n");
     } else {
         console_puts("[ -- ] Block     no virtio-blk device attached\n");
+    }
+
+    delay_ms(150);
+    if (vnet_present()) {
+        const uint8_t *m = vnet_mac();
+        console_printf("[ OK ] Network   virtio-net @ IRQ %d\n", vnet_irq_number());
+        console_printf("                 MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
+                       m[0], m[1], m[2], m[3], m[4], m[5]);
+        console_puts("                 link discovered; TCP/IP WIP\n");
+    } else {
+        console_puts("[ -- ] Network   no virtio-net device attached\n");
     }
 #else
     console_puts("[ -- ] Interrupt (no GIC driver on this board, polling UART)\n");
@@ -238,6 +250,7 @@ void kernel_main(void) {
     timer_init(100);
     vinput_init();
     vblk_init();
+    vnet_init();
 #endif
 
 #ifdef BOARD_HAS_RAMFB

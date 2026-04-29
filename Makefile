@@ -23,7 +23,7 @@ CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
 ifeq ($(BOARD),qemu-virt)
 C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
            $(SRC)/virtio.c $(SRC)/virtio_input.c $(SRC)/virtio_blk.c \
-           $(SRC)/mmu.c \
+           $(SRC)/virtio_net.c $(SRC)/mmu.c \
            $(SRC)/task.c $(SRC)/syscall.c $(SRC)/user_program.c \
            $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/fw_cfg.c $(SRC)/font.c
 S_SRCS  := $(SRC)/boot.S $(SRC)/vectors.S $(SRC)/switch.S
@@ -73,7 +73,8 @@ $(PI_IMG): $(IMG)
 QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -m 256M \
              -device ramfb -device virtio-keyboard-device \
              -drive file=$(DISK_IMG),if=none,format=raw,id=hd0 \
-             -device virtio-blk-device,drive=hd0
+             -device virtio-blk-device,drive=hd0 \
+             -netdev user,id=n0 -device virtio-net-device,netdev=n0
 
 run: $(ELF)
 	qemu-system-aarch64 $(QEMU_BASE) -display none -serial stdio -kernel $<

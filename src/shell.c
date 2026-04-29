@@ -12,6 +12,7 @@
 #include "task.h"
 #include "heap.h"
 #include "user_program.h"
+#include "virtio_net.h"
 #endif
 
 #define LINE_MAX  256
@@ -48,6 +49,7 @@ static void cmd_ps(int argc, char **argv);
 static void cmd_run(int argc, char **argv);
 static void cmd_save(int argc, char **argv);
 static void cmd_load(int argc, char **argv);
+static void cmd_ifconfig(int argc, char **argv);
 #endif
 
 static const struct cmd cmds[] = {
@@ -68,6 +70,7 @@ static const struct cmd cmds[] = {
     {"run",     cmd_run,     "run a built-in user program (try 'run hello')"},
     {"save",    cmd_save,    "persist filesystem to virtio-blk disk"},
     {"load",    cmd_load,    "reload filesystem from virtio-blk disk"},
+    {"ifconfig",cmd_ifconfig,"show network interface info"},
 #endif
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
@@ -256,6 +259,19 @@ static void cmd_load(int argc, char **argv) {
     int r = fs_load();
     if (r == 0) console_puts("filesystem loaded\n");
     else console_printf("load failed (%d) -- disk has no fs yet?\n", r);
+}
+
+static void cmd_ifconfig(int argc, char **argv) {
+    (void)argc; (void)argv;
+    if (!vnet_present()) {
+        console_puts("ifconfig: no network device\n");
+        return;
+    }
+    const uint8_t *m = vnet_mac();
+    console_printf("eth0: virtio-net  IRQ %d\n", vnet_irq_number());
+    console_printf("      hwaddr %02x:%02x:%02x:%02x:%02x:%02x\n",
+                   m[0], m[1], m[2], m[3], m[4], m[5]);
+    console_puts("      ip     (no IP stack yet)\n");
 }
 
 static void cmd_run(int argc, char **argv) {
