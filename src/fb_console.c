@@ -2,9 +2,8 @@
 #include "fb.h"
 #include "fb_console.h"
 
-#define SCALE      2
-#define CELL_W     (8 * SCALE)
-#define CELL_H     (8 * SCALE)
+#define CELL_W     8
+#define CELL_H     16
 #define LINE_PAD   0
 #define ROW_H      (CELL_H + LINE_PAD)
 #define COLS       (FB_WIDTH  / CELL_W)
@@ -72,7 +71,7 @@ void fb_console_putc(char c) {
     uint32_t x = cur_col * CELL_W;
     uint32_t y = cur_row * ROW_H;
     fb_fill_rect(x, y, CELL_W, ROW_H, bg_color);
-    fb_draw_glyph(x, y + LINE_PAD / 2, c, fg_color, SCALE);
+    fb_draw_glyph16(x, y + LINE_PAD / 2, c, fg_color);
 
     cur_col++;
     if (cur_col >= COLS) {
@@ -88,7 +87,7 @@ void fb_console_status_set(const char *line) {
     uint32_t x = 12;
     uint32_t y = USABLE_H + (STATUS_H - CELL_H) / 2;
     for (uint32_t i = 0; line[i] != '\0' && x + CELL_W <= FB_WIDTH; i++) {
-        fb_draw_glyph(x, y, line[i], BAR_FG, SCALE);
+        fb_draw_glyph16(x, y, line[i], BAR_FG);
         x += CELL_W;
     }
 }

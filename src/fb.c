@@ -97,3 +97,20 @@ void fb_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t color, uint3
         s++;
     }
 }
+
+void fb_draw_glyph16(uint32_t x, uint32_t y, char c, uint32_t color) {
+    const uint8_t *glyph = font_8x16_glyph(c);
+    uint32_t *px = fb_pixels();
+    for (uint32_t row = 0; row < 16; row++) {
+        uint32_t py = y + row;
+        if (py >= FB_HEIGHT) break;
+        uint8_t  bits = glyph[row];
+        uint32_t *line = &px[py * FB_WIDTH];
+        for (uint32_t col = 0; col < 8; col++) {
+            if (bits & (uint8_t)(1u << col)) {
+                uint32_t pxs = x + col;
+                if (pxs < FB_WIDTH) line[pxs] = color;
+            }
+        }
+    }
+}

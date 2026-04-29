@@ -7,5 +7,6 @@
 #define FONT_GLYPH_H 8
 
 const uint8_t *font_8x8_glyph(char c);
+const uint8_t *font_8x16_glyph(char c);
 
 #endif
