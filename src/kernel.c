@@ -27,8 +27,13 @@ extern uint8_t _kernel_start[];
 extern uint8_t _kernel_end[];
 extern uint8_t _stack_top[];
 
-#define BG_COLOR  0x00080814u
-#define FG_COLOR  0x00d0d6dfu
+/*
+ * Slightly tinted background and softer foreground than pure white --
+ * looks closer to a modern terminal than to monochrome VGA, and the
+ * 2x bitmap font reads more legibly against it.
+ */
+#define BG_COLOR  0x000c1018u
+#define FG_COLOR  0x00cfd4e0u
 
 static void delay_ms(uint32_t ms) {
     uint64_t freq = sys_timer_freq();
@@ -52,100 +57,89 @@ static void post(void) {
     uint32_t mhz_d  = (uint32_t)((tfreq % 1000000u) / 100000u);
 
     console_puts("\n");
-    console_puts("================================================================\n");
-    console_printf(" HobbyBIOS v0.4  (board: %s)\n", sys_board_name());
+    console_puts("==========================================\n");
+    console_printf(" HobbyBIOS v0.5    board: %s\n", sys_board_name());
     console_puts(" (c) 2026  Hobby ARM Operating System\n");
-    console_puts("================================================================\n\n");
+    console_puts("==========================================\n\n");
 
     delay_ms(120);
-    console_puts("Performing power-on self test...\n\n");
+    console_puts("Power-on self test\n");
+    console_puts("------------------\n");
 
     delay_ms(150);
-    console_printf("[ OK ] CPU       %s  (EL%u)\n", sys_cpu_name(midr), el);
-    console_printf("                 MIDR_EL1=0x%lx  MPIDR=0x%lx\n",
-                   midr, sys_read_mpidr());
-    console_printf("                 system timer %u.%u MHz\n", mhz_i, mhz_d);
+    console_printf("[ OK ] CPU      %s  (EL%u)\n", sys_cpu_name(midr), el);
+    console_printf("                MIDR  0x%lx\n", midr);
+    console_printf("                MPIDR 0x%lx\n", sys_read_mpidr());
+    console_printf("                timer %u.%u MHz\n", mhz_i, mhz_d);
 
     delay_ms(150);
-    console_printf("[ OK ] Memory    256 MiB total\n");
-    console_printf("                 kernel  0x%08x .. 0x%08x  (%u bytes)\n",
-                   kstart, kend, ksize);
-    console_printf("                 stack   0x%08x .. 0x%08x\n", kend, stop);
+    console_printf("[ OK ] Memory   256 MiB\n");
+    console_printf("                kernel 0x%08x..0x%08x\n", kstart, kend);
+    console_printf("                stack  0x%08x..0x%08x\n", kend, stop);
 
     delay_ms(150);
 #ifdef BOARD_HAS_RAMFB
-    console_puts("[ OK ] Display   ramfb 800x600 XRGB8888 (host window)\n");
-    console_puts("                 framebuffer mapped via fw_cfg DMA\n");
+    console_puts("[ OK ] Display  ramfb 800x600 XRGB8888\n");
 #else
-    console_puts("[ -- ] Display   none (serial console only)\n");
+    console_puts("[ -- ] Display  serial only\n");
 #endif
 
     delay_ms(150);
-    console_printf("[ OK ] Storage   RAM filesystem  16 slots x 4 KiB = 64 KiB\n");
-    console_puts("                 (volatile - contents lost on reboot)\n");
+    console_puts("[ OK ] Storage  RAM fs 16 x 4 KiB (volatile)\n");
 
     delay_ms(150);
-    console_printf("[ OK ] Console   PL011 UART @ 0x%lx (RX interrupt enabled)\n",
-                   (uint64_t)UART_BASE);
+    console_printf("[ OK ] Console  PL011 UART @ 0x%lx\n", (uint64_t)UART_BASE);
 
     delay_ms(150);
 #ifdef BOARD_HAS_GIC
-    console_puts("[ OK ] MMU       4 KiB granule, 39-bit VA, identity map\n");
-    console_puts("                 caches enabled (I+D)\n");
+    console_puts("[ OK ] MMU      4 KiB granule, 39-bit VA, I+D caches\n");
 
     delay_ms(150);
-    console_puts("[ OK ] Heap      kalloc/kfree on a 2 MiB pool\n");
+    console_puts("[ OK ] Heap     kalloc/kfree, 2 MiB pool\n");
 
     delay_ms(150);
-    console_puts("[ OK ] Scheduler cooperative round-robin\n");
-    console_puts("                 timer-driven resched hint @ 12.5 Hz\n");
+    console_printf("[ OK ] Sched    cooperative, %u Hz tick\n", timer_hz());
 
     delay_ms(150);
-    console_printf("[ OK ] Interrupt GIC v2 distributor + CPU iface\n");
-    console_printf("                 system tick at %u Hz, CPU now sleeps when idle\n",
-                   timer_hz());
+    console_puts("[ OK ] IRQ      GIC v2 (distributor + CPU iface)\n");
 
     delay_ms(150);
     int kbd_irq = vinput_irq_number();
     if (kbd_irq >= 0) {
-        console_printf("[ OK ] Keyboard  virtio-input @ IRQ %d\n", kbd_irq);
-        console_puts("                 host keyboard delivers events into ring buffer\n");
+        console_printf("[ OK ] Kbd      virtio-input @ IRQ %d\n", kbd_irq);
     } else {
-        console_puts("[ -- ] Keyboard  no virtio-input device found\n");
-        console_puts("                 launch QEMU with -device virtio-keyboard-device\n");
+        console_puts("[ -- ] Kbd      no virtio-input found\n");
     }
 
     delay_ms(150);
     if (vblk_present()) {
-        console_printf("[ OK ] Block     virtio-blk @ IRQ %d  capacity %lu sectors\n",
+        console_printf("[ OK ] Block    virtio-blk @ IRQ %d  %lu sectors\n",
                        vblk_irq_number(),
                        (unsigned long)vblk_capacity_sectors());
-        console_puts("                 driver attached; persistence WIP\n");
     } else {
-        console_puts("[ -- ] Block     no virtio-blk device attached\n");
+        console_puts("[ -- ] Block    no virtio-blk found\n");
     }
 
     delay_ms(150);
     if (vnet_present()) {
         const uint8_t *m = vnet_mac();
-        console_printf("[ OK ] Network   virtio-net @ IRQ %d\n", vnet_irq_number());
-        console_printf("                 MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
+        console_printf("[ OK ] Net      virtio-net @ IRQ %d\n", vnet_irq_number());
+        console_printf("                MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
                        m[0], m[1], m[2], m[3], m[4], m[5]);
-        console_puts("                 link discovered; TCP/IP WIP\n");
     } else {
-        console_puts("[ -- ] Network   no virtio-net device attached\n");
+        console_puts("[ -- ] Net      no virtio-net found\n");
     }
 #else
-    console_puts("[ -- ] Interrupt (no GIC driver on this board, polling UART)\n");
+    console_puts("[ -- ] IRQ      polling only on this board\n");
 #endif
 
     delay_ms(150);
-    console_puts("[ OK ] Power     PSCI hypercalls: SYSTEM_OFF, SYSTEM_RESET\n");
+    console_puts("[ OK ] Power    PSCI SYSTEM_OFF / RESET\n");
 
     delay_ms(200);
-    console_puts("\n----------------------------------------------------------------\n");
+    console_puts("\n------------------------------------------\n");
     console_puts(" Boot complete. Type 'help' for commands.\n");
-    console_puts("----------------------------------------------------------------\n\n");
+    console_puts("------------------------------------------\n\n");
 }
 
 #ifdef BOARD_HAS_GIC
