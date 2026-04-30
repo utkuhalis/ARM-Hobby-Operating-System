@@ -122,9 +122,11 @@ static void handle_event(const struct input_event *ev) {
 }
 
 static void process_used(void) {
+    virtio_dma_invalidate(&vqused, sizeof(vqused));
     while (last_used_idx != vqused.idx) {
         uint16_t i = last_used_idx % QSIZE;
         uint16_t desc_idx = (uint16_t)vqused.ring[i].id;
+        virtio_dma_invalidate(&vqbufs[desc_idx], sizeof(vqbufs[0]));
         handle_event(&vqbufs[desc_idx]);
         event_count++;
         uint16_t a = vqavail.idx % QSIZE;
@@ -134,6 +136,7 @@ static void process_used(void) {
         last_used_idx++;
     }
     __asm__ volatile("dmb ish" ::: "memory");
+    virtio_dma_flush(&vqavail, sizeof(vqavail));
 }
 
 void vmouse_irq(void) {
@@ -179,6 +182,10 @@ int vmouse_init(void) {
     }
     __asm__ volatile("dmb ish" ::: "memory");
     vqavail.idx = QSIZE;
+
+    virtio_dma_flush(vqdesc, sizeof(vqdesc));
+    virtio_dma_flush(&vqavail, sizeof(vqavail));
+    virtio_dma_flush(vqbufs, sizeof(vqbufs));
 
     uint64_t da = (uint64_t)(uintptr_t)vqdesc;
     uint64_t aa = (uint64_t)(uintptr_t)&vqavail;

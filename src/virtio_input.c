@@ -4,6 +4,7 @@
 #include "virtio_mouse.h"
 #include "gic.h"
 
+#define MMIO_VERSION             0x004
 #define MMIO_DEVICE_FEATURES_SEL 0x014
 #define MMIO_DRIVER_FEATURES     0x020
 #define MMIO_DRIVER_FEATURES_SEL 0x024
@@ -179,10 +180,13 @@ static void handle_event(const struct input_event *ev) {
 }
 
 static void process_used(void) {
+    /* Make sure we see the device's most recent vqused.idx */
+    virtio_dma_invalidate(&vqused, sizeof(vqused));
     while (last_used_idx != vqused.idx) {
         uint16_t i        = last_used_idx % QSIZE;
         uint16_t desc_idx = (uint16_t)vqused.ring[i].id;
 
+        virtio_dma_invalidate(&vqbufs[desc_idx], sizeof(vqbufs[0]));
         handle_event(&vqbufs[desc_idx]);
         event_count++;
 
@@ -195,6 +199,7 @@ static void process_used(void) {
         last_used_idx++;
     }
     __asm__ volatile("dmb ish" ::: "memory");
+    virtio_dma_flush(&vqavail, sizeof(vqavail));
 }
 
 void vinput_irq(void) {
@@ -206,10 +211,15 @@ void vinput_irq(void) {
     vio_write32(&dev, MMIO_QUEUE_NOTIFY, 0);
 }
 
+static uint32_t mmio_version;
+uint32_t vinput_mmio_version(void) { return mmio_version; }
+
 int vinput_init(void) {
     if (virtio_mmio_find(VIRTIO_DEVICE_INPUT, &dev) != 0) {
         return -1;
     }
+
+    mmio_version = vio_read32(&dev, MMIO_VERSION);
 
     /* Reset and walk through the standard handshake */
     vio_write32(&dev, MMIO_STATUS, 0);
@@ -221,7 +231,7 @@ int vinput_init(void) {
     vio_write32(&dev, MMIO_DRIVER_FEATURES, 0);
     vio_write32(&dev, MMIO_DEVICE_FEATURES_SEL, 1);
     vio_write32(&dev, MMIO_DRIVER_FEATURES_SEL, 1);
-    vio_write32(&dev, MMIO_DRIVER_FEATURES, 0);
+    vio_write32(&dev, MMIO_DRIVER_FEATURES, 1); /* VIRTIO_F_VERSION_1 */
 
     vio_write32(&dev, MMIO_STATUS,
                 STATUS_ACKNOWLEDGE | STATUS_DRIVER | STATUS_FEATURES_OK);
@@ -245,6 +255,12 @@ int vinput_init(void) {
     }
     __asm__ volatile("dmb ish" ::: "memory");
     vqavail.idx = QSIZE;
+
+    /* Flush queue setup so the device sees our writes when it
+     * starts reading the rings on QueueReady=1 / DRIVER_OK. */
+    virtio_dma_flush(vqdesc, sizeof(vqdesc));
+    virtio_dma_flush(&vqavail, sizeof(vqavail));
+    virtio_dma_flush(vqbufs, sizeof(vqbufs));
 
     uint64_t da = (uint64_t)(uintptr_t)vqdesc;
     uint64_t aa = (uint64_t)(uintptr_t)&vqavail;

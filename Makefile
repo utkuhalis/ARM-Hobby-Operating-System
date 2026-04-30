@@ -73,6 +73,7 @@ $(PI_IMG): $(IMG)
 	cp $< $@
 
 QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -smp 4 -m 256M \
+             -global virtio-mmio.force-legacy=false \
              -device ramfb -device virtio-keyboard-device \
              -device virtio-tablet-device \
              -drive file=$(DISK_IMG),if=none,format=raw,id=hd0 \

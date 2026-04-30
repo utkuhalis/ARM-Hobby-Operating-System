@@ -8,5 +8,6 @@ int  vinput_irq_number(void);
 
 uint64_t vinput_event_count(void);
 uint64_t vinput_irq_count(void);
+uint32_t vinput_mmio_version(void);
 
 #endif

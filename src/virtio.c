@@ -24,6 +24,27 @@ int virtio_mmio_find(uint32_t want_id, struct virtio_mmio_dev *out) {
     return virtio_mmio_find_nth(want_id, 0, out);
 }
 
+#define CACHE_LINE 64
+
+void virtio_dma_flush(const volatile void *p, unsigned long n) {
+    uintptr_t a   = (uintptr_t)p & ~(uintptr_t)(CACHE_LINE - 1);
+    uintptr_t end = (uintptr_t)p + n;
+    for (; a < end; a += CACHE_LINE) {
+        __asm__ volatile("dc cvac, %0" :: "r"(a) : "memory");
+    }
+    __asm__ volatile("dsb sy" ::: "memory");
+}
+
+void virtio_dma_invalidate(const volatile void *p, unsigned long n) {
+    uintptr_t a   = (uintptr_t)p & ~(uintptr_t)(CACHE_LINE - 1);
+    uintptr_t end = (uintptr_t)p + n;
+    __asm__ volatile("dsb sy" ::: "memory");
+    for (; a < end; a += CACHE_LINE) {
+        __asm__ volatile("dc ivac, %0" :: "r"(a) : "memory");
+    }
+    __asm__ volatile("dsb sy" ::: "memory");
+}
+
 int virtio_mmio_find_nth(uint32_t want_id, int nth, struct virtio_mmio_dev *out) {
     int seen = 0;
     for (int i = 0; i < VIRTIO_MMIO_SLOTS; i++) {

@@ -145,7 +145,8 @@ static void post(void) {
     delay_ms(150);
     int kbd_irq = vinput_irq_number();
     if (kbd_irq >= 0) {
-        console_printf("[ OK ] Kbd      virtio-input @ IRQ %d\n", kbd_irq);
+        console_printf("[ OK ] Kbd      virtio-input @ IRQ %d  (mmio v%u)\n",
+                       kbd_irq, vinput_mmio_version());
     } else {
         console_puts("[ -- ] Kbd      no virtio-input found\n");
     }
