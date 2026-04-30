@@ -64,6 +64,11 @@ static volatile uint16_t last_used_idx;
 static volatile int32_t  cursor_x = 400;
 static volatile int32_t  cursor_y = 300;
 static volatile int      buttons;
+static volatile uint64_t event_count;
+static volatile uint64_t irq_count;
+
+uint64_t vmouse_event_count(void) { return event_count; }
+uint64_t vmouse_irq_count(void)   { return irq_count; }
 
 int  vmouse_present(void)    { return initialized; }
 int  vmouse_irq_number(void) { return initialized ? (int)dev.irq : -1; }
@@ -121,6 +126,7 @@ static void process_used(void) {
         uint16_t i = last_used_idx % QSIZE;
         uint16_t desc_idx = (uint16_t)vqused.ring[i].id;
         handle_event(&vqbufs[desc_idx]);
+        event_count++;
         uint16_t a = vqavail.idx % QSIZE;
         vqavail.ring[a] = desc_idx;
         __asm__ volatile("dmb ish" ::: "memory");
@@ -132,6 +138,7 @@ static void process_used(void) {
 
 void vmouse_irq(void) {
     if (!initialized) return;
+    irq_count++;
     uint32_t st = (uint32_t)*(volatile uint32_t *)(dev.base + MMIO_INT_STATUS);
     process_used();
     *(volatile uint32_t *)(dev.base + MMIO_INT_ACK) = st;

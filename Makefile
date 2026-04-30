@@ -91,8 +91,9 @@ run-graphic: $(ELF)
 # captures host events properly and pumps them into the guest.
 run-vnc: $(ELF)
 	@echo "QEMU listening on vnc://localhost:5901"
-	@echo "Connect with: open vnc://localhost:5901    (macOS Screen Sharing)"
-	qemu-system-aarch64 $(QEMU_BASE) -display vnc=:1 -serial stdio -kernel $<
+	@echo "macOS Screen Sharing: open vnc://localhost:5901"
+	@echo "(no password; just hit 'Connect' / Enter)"
+	qemu-system-aarch64 $(QEMU_BASE) -vnc 127.0.0.1:1,to=10 -display none -serial stdio -kernel $<
 
 screenshot: $(ELF)
 	bash scripts/screenshot.sh

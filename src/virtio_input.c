@@ -73,6 +73,11 @@ static struct input_event     vqbufs[QSIZE]   __attribute__((aligned(8)));
 
 static volatile uint16_t last_used_idx;
 static int               initialized;
+static volatile uint64_t event_count;
+static volatile uint64_t irq_count;
+
+uint64_t vinput_event_count(void) { return event_count; }
+uint64_t vinput_irq_count(void)   { return irq_count; }
 
 #define KBD_BUF 64
 static volatile uint8_t  kbd_buf[KBD_BUF];
@@ -179,6 +184,7 @@ static void process_used(void) {
         uint16_t desc_idx = (uint16_t)vqused.ring[i].id;
 
         handle_event(&vqbufs[desc_idx]);
+        event_count++;
 
         /* Re-arm this descriptor on the avail ring */
         uint16_t a = vqavail.idx % QSIZE;
@@ -193,6 +199,7 @@ static void process_used(void) {
 
 void vinput_irq(void) {
     if (!initialized) return;
+    irq_count++;
     uint32_t status = vio_read32(&dev, MMIO_INT_STATUS);
     process_used();
     vio_write32(&dev, MMIO_INT_ACK, status);

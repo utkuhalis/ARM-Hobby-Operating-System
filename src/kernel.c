@@ -354,7 +354,7 @@ static void render_monitor_window(void) {
     if (vmouse_present()) {
         int32_t mx = 0, my = 0;
         vmouse_position(&mx, &my);
-        window_puts(win_monitor, "cursor: ");
+        window_puts(win_monitor, "cursor : ");
         format_uint(buf, (uint64_t)mx);
         window_puts(win_monitor, buf);
         window_puts(win_monitor, ",");
@@ -362,6 +362,20 @@ static void render_monitor_window(void) {
         window_puts(win_monitor, buf);
         window_puts(win_monitor, " btn ");
         format_uint(buf, (uint64_t)vmouse_buttons());
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, "\n");
+        window_puts(win_monitor, "kbd evt: ");
+        format_uint(buf, vinput_event_count());
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, "  irq: ");
+        format_uint(buf, vinput_irq_count());
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, "\n");
+        window_puts(win_monitor, "ms evt : ");
+        format_uint(buf, vmouse_event_count());
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, "  irq: ");
+        format_uint(buf, vmouse_irq_count());
         window_puts(win_monitor, buf);
         window_puts(win_monitor, "\n");
     }

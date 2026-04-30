@@ -15,4 +15,7 @@ int  vmouse_buttons(void);
 void vmouse_inject_move(int dx, int dy);
 void vmouse_inject_button(int left_down);
 
+uint64_t vmouse_event_count(void);
+uint64_t vmouse_irq_count(void);
+
 #endif

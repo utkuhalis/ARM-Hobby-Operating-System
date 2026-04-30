@@ -6,4 +6,7 @@ int  vinput_read_char(char *out);
 void vinput_irq(void);
 int  vinput_irq_number(void);
 
+uint64_t vinput_event_count(void);
+uint64_t vinput_irq_count(void);
+
 #endif
