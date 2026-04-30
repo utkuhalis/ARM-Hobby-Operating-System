@@ -22,6 +22,7 @@
 #ifdef BOARD_HAS_RAMFB
 #include "fb.h"
 #include "fb_console.h"
+#include "window.h"
 #endif
 
 extern uint8_t _kernel_start[];
@@ -221,45 +222,50 @@ static void format_uint(char *buf, uint64_t v) {
     buf[o] = '\0';
 }
 
+static window_t *win_terminal;
+static window_t *win_monitor;
+
+static void render_monitor_window(void) {
+    if (!win_monitor) return;
+    window_clear(win_monitor);
+
+    char buf[64];
+    int running = 0, ready = 0;
+    int total = task_state_count(&running, &ready);
+
+    window_puts(win_monitor, "uptime    : ");
+    format_uint(buf, sys_uptime_seconds());
+    window_puts(win_monitor, buf);
+    window_puts(win_monitor, " s\n");
+
+    window_puts(win_monitor, "ticks     : ");
+    format_uint(buf, timer_ticks());
+    window_puts(win_monitor, buf);
+    window_puts(win_monitor, "\n");
+
+    window_puts(win_monitor, "tasks     : ");
+    format_uint(buf, (uint64_t)total);
+    window_puts(win_monitor, buf);
+    window_puts(win_monitor, "\n\n");
+
+    for (task_t *t = task_first(); t; t = t->next) {
+        format_uint(buf, (uint64_t)t->id);
+        window_puts(win_monitor, "  [");
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, "] ");
+        window_puts(win_monitor, t->name);
+        window_puts(win_monitor, "\n");
+    }
+}
+
 static void status_thread(void *arg) {
     (void)arg;
-    static char line[120];
     for (;;) {
-        uint64_t s = sys_uptime_seconds();
-        uint64_t ticks = timer_ticks();
-        int running = 0, ready = 0;
-        int total = task_state_count(&running, &ready);
-
-        char up[24], tk[24], to[8], tr[8];
-        format_uint(up, s);
-        format_uint(tk, ticks);
-        format_uint(to, (uint64_t)total);
-        format_uint(tr, (uint64_t)ready);
-
-        char *p = line;
-        const char *parts[] = {
-            "Hobby ARM OS  | up ", up, "s  | ticks ", tk,
-            "  | tasks ", to, " (", tr, " ready)  | beats ", NULL
-        };
-        for (int i = 0; parts[i]; i++) {
-            const char *s2 = parts[i];
-            while (*s2) *p++ = *s2++;
-        }
-        char beats[24];
-        format_uint(beats, ticker_beats);
-        const char *s3 = beats;
-        while (*s3) *p++ = *s3++;
-        *p = '\0';
-
-#ifdef BOARD_HAS_RAMFB
-        fb_console_status_set(line);
-        if (vmouse_present()) {
-            int32_t mx = 0, my = 0;
-            vmouse_position(&mx, &my);
-            fb_draw_cursor((uint32_t)mx, (uint32_t)my, 0x00ffe060u);
-        }
-#endif
         ticker_beats++;
+        render_monitor_window();
+#ifdef BOARD_HAS_RAMFB
+        window_compose();
+#endif
         for (int i = 0; i < 5; i++) task_yield();
         __asm__ volatile("wfi");
     }
@@ -314,6 +320,15 @@ void kernel_main(void) {
 #ifdef BOARD_HAS_RAMFB
     if (fb_init() == 0) {
         fb_console_init(BG_COLOR, FG_COLOR);
+        window_init();
+        win_terminal = window_create("Terminal", 16, 16);
+        win_monitor  = window_create("System Monitor",
+                                     16 + win_terminal->w + 16, 16);
+        window_puts(win_terminal,
+                    "Hobby ARM OS shell\n"
+                    "(serial input still goes to UART)\n"
+                    "\n"
+                    "type 'help' over the serial line\n");
     }
 #endif
 
