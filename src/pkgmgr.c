@@ -10,6 +10,7 @@
 #include "heap.h"
 #include "elf.h"
 #include "sha256.h"
+#include "task.h"
 #endif
 
 /*
@@ -334,9 +335,85 @@ int pkg_remove_by_name(const char *name) {
     return 0;
 }
 
+/* ---------- run a package: prefer the on-disk ELF ---------- */
+
+#define USTACK_SIZE 16384
+
+static int any_user_task_running(void) {
+    task_t *t = task_first();
+    while (t) {
+        if (t->state != TASK_DEAD && t->is_user) return 1;
+        t = t->next;
+    }
+    return 0;
+}
+
+static void icache_invalidate_all(void) {
+    /* Newly-loaded ELF code may sit in stale I-cache lines from
+     * whatever was here before. Push the data side, dump the
+     * I-cache, and synchronize. */
+    __asm__ volatile(
+        "dsb ishst\n"
+        "ic iallu\n"
+        "dsb ish\n"
+        "isb\n"
+        ::: "memory"
+    );
+}
+
+int pkg_run_by_name(const char *name) {
+    int idx = pkg_index_of(name);
+    if (idx < 0) return -1;
+
+    if (pkgstore_has(name)) {
+        if (any_user_task_running()) {
+            console_puts("run: another user program is running; "
+                         "wait for it to exit first\n");
+            return -2;
+        }
+
+        uint32_t size = 0;
+        pkgstore_get_size(name, &size);
+        if (size == 0) return -3;
+
+        uint8_t *buf = (uint8_t *)kalloc(size);
+        if (!buf) return -4;
+        int n = pkgstore_load(name, buf, size, 0);
+        if (n < 0) { kfree(buf); return -5; }
+
+        struct elf_image img;
+        if (elf_inspect(buf, n, &img) != 0) { kfree(buf); return -6; }
+        if (elf_load(buf, n) != 0)         { kfree(buf); return -7; }
+        kfree(buf);
+        icache_invalidate_all();
+
+        void *ustack = kalloc(USTACK_SIZE);
+        if (!ustack) return -8;
+
+        int id = task_spawn_user(name,
+                                 (void (*)(void))(uintptr_t)img.entry,
+                                 ustack, USTACK_SIZE);
+        if (id < 0) {
+            kfree(ustack);
+            return -9;
+        }
+        return id;
+    }
+
+    /* Fallback: built-in entry function compiled into the kernel. */
+    void (*fn)(void) = catalog[idx].entry;
+    if (!fn) return -10;
+    return task_spawn(name, (void (*)(void *))fn, 0);
+}
+
 #else /* !BOARD_HAS_GIC: no network/disk, fall back to no-op */
 
 int pkg_install_by_name(const char *name) { (void)name; return -1; }
 int pkg_remove_by_name(const char *name)  { (void)name; return -1; }
+int pkg_run_by_name(const char *name) {
+    int i = pkg_index_of(name);
+    if (i < 0) return -1;
+    return -1;
+}
 
 #endif

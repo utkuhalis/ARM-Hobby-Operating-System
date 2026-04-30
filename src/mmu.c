@@ -65,7 +65,8 @@ void mmu_init(void) {
      * Real EL0 isolation needs a finer-grained pgtable so the kernel's
      * own text and data can stay AP=00 while a separate user-heap
      * region gets AP=01. That refactor is left for a follow-up; today
-     * the syscall path is exercised but user tasks run at EL1.
+     * task_spawn_user lands in EL1h (see user_trampoline) so cross-
+     * compiled ELFs can run without tripping the AP=00 mappings.
      */
 
     __asm__ volatile("dsb sy");

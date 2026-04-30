@@ -9,8 +9,8 @@
   "author": "Hobby ARM OS",
   "homepage": "https://github.com/utkuhalis/ARM-Hobby-Operating-System",
   "exec": "/packages/hello/hello.elf",
-  "sha256": "6ddbf189c5987f76ab0e81911e79881a3e62a3c94f2edd1b6c6da1eb2c33dc05",
-  "size": 66808,
+  "sha256": "2ab5bd981a3051a0d11faf5cd50959e6aa82e98c5fe5b0b62080cd82e23bdfdb",
+  "size": 66824,
   "icon": "/packages/hello/icon.txt",
   "depends": [],
   "syscalls": [

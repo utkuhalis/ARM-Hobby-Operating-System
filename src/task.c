@@ -40,16 +40,27 @@ static void task_trampoline(void) {
 void user_trampoline(void) {
     task_t *t = current;
     uint64_t entry = (uint64_t)(uintptr_t)t->user_entry;
-    uint64_t stack = (uint64_t)(uintptr_t)t->user_stack +
-                     t->user_stack_size;
+
+    /*
+     * Strictly speaking these tasks are not "user" mode -- without a
+     * finer-grained pgtable that gives them AP=01 pages, EL0 would
+     * fault on every access against the kernel's AP=00 RAM mapping.
+     * Returning to EL1h is enough to exercise the SVC syscall path
+     * the cross-compiled ELF depends on, and matches what the built-in
+     * user_main_* fallback was already doing implicitly.
+     *
+     * The task's existing kernel stack (16 KiB from task_spawn_user)
+     * carries us into the ELF -- crt0 just does bl hobby_main and
+     * the C compiler maintains SP correctly from there.
+     */
+    uint64_t spsr = 0x5;   /* M[3:0] = 0b0101 = EL1h, DAIF clear */
 
     __asm__ volatile(
-        "msr sp_el0,   %0\n"
-        "msr elr_el1,  %1\n"
-        "msr spsr_el1, xzr\n"
+        "msr elr_el1,  %0\n"
+        "msr spsr_el1, %1\n"
         "isb\n"
         "eret\n"
-        : : "r"(stack), "r"(entry)
+        : : "r"(entry), "r"(spsr)
         : "memory"
     );
     __builtin_unreachable();

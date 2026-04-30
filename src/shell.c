@@ -305,22 +305,18 @@ static void cmd_ifconfig(int argc, char **argv) {
 
 static void cmd_run(int argc, char **argv) {
     if (argc < 2) {
-        console_puts("usage: run <program>\n");
-        console_puts("  programs: hello\n");
+        console_puts("usage: run <program>  (try 'pkg list' for names)\n");
         return;
     }
-    void (*fn)(void) = pkg_entry_by_name(argv[1]);
-    if (!fn) {
-        if (pkg_index_of(argv[1]) < 0) {
-            console_printf("run: unknown program '%s' (try 'pkg list')\n", argv[1]);
-        } else {
-            console_printf("run: '%s' is not installed (try 'pkg install %s')\n",
-                           argv[1], argv[1]);
-        }
+    if (pkg_index_of(argv[1]) < 0) {
+        console_printf("run: unknown program '%s' (try 'pkg list')\n", argv[1]);
         return;
     }
-    int id = task_spawn(argv[1], (void (*)(void *))fn, NULL);
-    if (id < 0) { console_puts("run: spawn failed\n"); return; }
+    int id = pkg_run_by_name(argv[1]);
+    if (id < 0) {
+        console_printf("run: failed to start '%s' (err %d)\n", argv[1], id);
+        return;
+    }
     console_printf("spawned task id %d (%s)\n", id, argv[1]);
     for (int y = 0; y < 8; y++) task_yield();
 }

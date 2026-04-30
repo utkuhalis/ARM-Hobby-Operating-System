@@ -14,4 +14,9 @@ int   pkg_install_by_name(const char *name);
 int   pkg_remove_by_name(const char *name);
 void  (*pkg_entry_by_name(const char *name))(void);
 
+/* Spawn the package: prefers the on-disk ELF (loaded into EL0 user
+ * space) and falls back to the kernel-linked built-in entry. Returns
+ * the new task id on success, <0 on error. */
+int   pkg_run_by_name(const char *name);
+
 #endif
