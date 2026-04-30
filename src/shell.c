@@ -392,17 +392,28 @@ static void cmd_pkg(int argc, char **argv) {
     }
     if (argc < 3) { console_puts("pkg: missing package name\n"); return; }
     if (strcmp(argv[1], "install") == 0) {
-        if (pkg_install_by_name(argv[2]) == 0)
-            console_printf("installed %s\n", argv[2]);
-        else
-            console_printf("pkg: unknown package %s\n", argv[2]);
+        (void)pkg_install_by_name(argv[2]);
         return;
     }
     if (strcmp(argv[1], "remove") == 0) {
-        if (pkg_remove_by_name(argv[2]) == 0)
-            console_printf("removed %s\n", argv[2]);
-        else
-            console_printf("pkg: unknown package %s\n", argv[2]);
+#ifdef BOARD_HAS_GIC
+        task_t *t = task_find_by_name(argv[2]);
+        if (t) {
+            console_printf("'%s' is currently running (task id %d).\n",
+                           argv[2], t->id);
+            console_puts("close it and remove? [y/N]: ");
+            char ans[8];
+            int got = console_readline(ans, sizeof(ans));
+            if (got <= 0 || (ans[0] != 'y' && ans[0] != 'Y')) {
+                console_puts("aborted; package not removed.\n");
+                return;
+            }
+            if (task_kill(t) == 0) {
+                console_printf("closed task %d.\n", t->id);
+            }
+        }
+#endif
+        (void)pkg_remove_by_name(argv[2]);
         return;
     }
 #ifdef BOARD_HAS_GIC

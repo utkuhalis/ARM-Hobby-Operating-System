@@ -8,6 +8,7 @@
 #include "accounts.h"
 #include "pkgmgr.h"
 #ifdef BOARD_HAS_GIC
+#include "pkgstore.h"
 #include "exceptions.h"
 #include "gic.h"
 #include "timer.h"
@@ -167,6 +168,13 @@ static void post(void) {
         if (fs_load() == 0) {
             console_puts("                fs auto-loaded from disk\n");
         }
+        pkgstore_init();
+        int installed = 0;
+        for (int i = 0; i < pkg_count(); i++) {
+            if (pkg_is_installed(i)) installed++;
+        }
+        console_printf("                pkgstore: %d package%s installed\n",
+                       installed, installed == 1 ? "" : "s");
     } else {
         console_puts("[ -- ] Block    no virtio-blk found\n");
     }

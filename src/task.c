@@ -173,6 +173,22 @@ task_t *task_first(void) {
     return all_tasks;
 }
 
+task_t *task_find_by_name(const char *name) {
+    task_t *t = all_tasks;
+    while (t) {
+        if (t->state != TASK_DEAD && strcmp(t->name, name) == 0) return t;
+        t = t->next;
+    }
+    return 0;
+}
+
+int task_kill(task_t *t) {
+    if (!t) return -1;
+    if (t == current) return -1;     /* don't shoot the foot we stand on */
+    t->state = TASK_DEAD;
+    return 0;
+}
+
 void task_request_resched(void) {
     resched_pending = 1;
 }

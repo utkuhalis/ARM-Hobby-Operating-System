@@ -41,4 +41,11 @@ int   task_resched_pending(void);
 task_t *task_current(void);
 task_t *task_first(void);
 
+/* Find a live task by name. Returns NULL if none match. */
+task_t *task_find_by_name(const char *name);
+
+/* Mark a task DEAD so the scheduler skips it on the next yield.
+ * Returns 0 on success, -1 if t is the current task or NULL. */
+int     task_kill(task_t *t);
+
 #endif

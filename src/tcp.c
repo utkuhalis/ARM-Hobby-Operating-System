@@ -22,7 +22,7 @@
 
 #define TCP_PROTO 6
 
-#define RX_BUF_SIZE  16384
+#define RX_BUF_SIZE  65536
 #define MSS          1300
 
 typedef enum {
@@ -95,6 +95,12 @@ static uint32_t rx_pop(uint8_t *out, uint32_t maxlen) {
 
 /* ------------- segment build/send ------------- */
 
+static uint16_t advertised_window(void) {
+    uint32_t free = RX_BUF_SIZE - (rx_wr - rx_rd);
+    if (free > 0xffff) free = 0xffff;
+    return (uint16_t)free;
+}
+
 static int send_segment(uint8_t flags, const uint8_t *data, uint32_t dlen) {
     if (dlen > 1500 - 20 - 20) return -1;  /* IP+TCP headers */
 
@@ -107,7 +113,7 @@ static int send_segment(uint8_t flags, const uint8_t *data, uint32_t dlen) {
     wbe32(tcp + 8, rcv_nxt);
     tcp[12] = 0x50;          /* data offset = 5 (20 bytes), reserved=0 */
     tcp[13] = flags;
-    wbe16(tcp + 14, 0xffff); /* window: max */
+    wbe16(tcp + 14, advertised_window());
     tcp[16] = 0; tcp[17] = 0;
     wbe16(tcp + 18, 0);      /* urg ptr */
 
@@ -136,7 +142,7 @@ static void send_ack(void) {
     wbe32(pkt + 8, rcv_nxt);
     pkt[12] = 0x50;
     pkt[13] = TCP_FLAG_ACK;
-    wbe16(pkt + 14, 0xffff);
+    wbe16(pkt + 14, advertised_window());
     pkt[16] = 0; pkt[17] = 0;
     wbe16(pkt + 18, 0);
 
@@ -217,7 +223,10 @@ int tcp_recv(void *buf, uint32_t maxlen, uint32_t timeout_ticks) {
         if (timer_ticks() > deadline) return -1;
         __asm__ volatile("wfi");
     }
-    return (int)rx_pop((uint8_t *)buf, maxlen);
+    int n = (int)rx_pop((uint8_t *)buf, maxlen);
+    /* let the peer know our receive window just opened back up */
+    if (state == TCP_ESTABLISHED || state == TCP_CLOSE_WAIT) send_ack();
+    return n;
 }
 
 void tcp_close(void) {
