@@ -25,6 +25,7 @@ ifeq ($(BOARD),qemu-virt)
 C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
            $(SRC)/virtio.c $(SRC)/virtio_input.c $(SRC)/virtio_mouse.c \
            $(SRC)/virtio_blk.c $(SRC)/virtio_net.c $(SRC)/net.c \
+           $(SRC)/tcp.c $(SRC)/http.c \
            $(SRC)/mmu.c \
            $(SRC)/task.c $(SRC)/syscall.c $(SRC)/user_program.c \
            $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/window.c \

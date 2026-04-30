@@ -17,6 +17,7 @@
 #include "virtio_net.h"
 #include "virtio_mouse.h"
 #include "net.h"
+#include "http.h"
 #endif
 
 #define LINE_MAX  256
@@ -89,7 +90,7 @@ static const struct cmd cmds[] = {
     {"login",   cmd_login,   "login <name> <password>"},
     {"logout",  cmd_logout,  "log out the current user"},
     {"users",   cmd_users,   "list known accounts"},
-    {"pkg",     cmd_pkg,     "package manager (list/install/remove)"},
+    {"pkg",     cmd_pkg,     "package manager (list/install/remove/fetch)"},
     {"elfinfo", cmd_elfinfo, "inspect an ELF file in the RAM filesystem"},
 #ifdef BOARD_HAS_GIC
     {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
@@ -404,6 +405,40 @@ static void cmd_pkg(int argc, char **argv) {
             console_printf("pkg: unknown package %s\n", argv[2]);
         return;
     }
+#ifdef BOARD_HAS_GIC
+    if (strcmp(argv[1], "fetch") == 0) {
+        /* Pull the manifest of <name> from the repo at 10.0.2.2:8090
+         * (the Docker container running tools/repo). Just to prove
+         * we can actually round-trip HTTP. */
+        if (pkg_index_of(argv[2]) < 0) {
+            console_printf("pkg fetch: unknown package %s\n", argv[2]);
+            return;
+        }
+        char path[64];
+        int p = 0;
+        const char *prefix = "/packages/";
+        for (int i = 0; prefix[i] && p < (int)sizeof(path)-1; i++) path[p++] = prefix[i];
+        for (int i = 0; argv[2][i] && p < (int)sizeof(path)-1; i++) path[p++] = argv[2][i];
+        const char *suffix = "/manifest.json";
+        for (int i = 0; suffix[i] && p < (int)sizeof(path)-1; i++) path[p++] = suffix[i];
+        path[p] = 0;
+
+        static uint8_t body[2048];
+        int status = 0;
+        uint32_t ip = (10u<<24) | (0u<<16) | (2u<<8) | 2u;
+        console_printf("pkg fetch: GET http://10.0.2.2:8090%s\n", path);
+        int n = http_get(ip, 8090, "10.0.2.2", path, body, sizeof(body)-1, &status);
+        if (n < 0) {
+            console_printf("pkg fetch: failed (err %d)\n", n);
+            return;
+        }
+        body[n] = 0;
+        console_printf("HTTP %d  (%d bytes)\n", status, n);
+        console_puts((const char *)body);
+        if (n > 0 && body[n-1] != '\n') console_puts("\n");
+        return;
+    }
+#endif
     console_printf("pkg: unknown subcommand %s\n", argv[1]);
 }
 
