@@ -8,6 +8,8 @@
 #include "console.h"
 #include "virtio_net.h"
 #include "net.h"
+#include "fs.h"
+#include "window.h"
 
 #define TOP_BG      0x00141a26u
 #define TOP_FG      0x00d6dde9u
@@ -172,7 +174,8 @@ static void format_net(char *out, uint32_t out_max) {
     u8_to_str(d, tmp);  for (int i = 0; tmp[i]; i++) b[n++] = tmp[i];
     b[n] = 0;
     for (int i = 0; b[i] && (uint32_t)i < out_max - 1; i++) out[i] = b[i];
-    out[(uint32_t)n < out_max ? n : out_max - 1] = 0;
+    uint32_t end = (uint32_t)n < out_max ? (uint32_t)n : out_max - 1;
+    out[end] = 0;
 }
 
 static void paint_top_bar(void) {
@@ -254,8 +257,171 @@ static void paint_dock(void) {
     }
 }
 
+/* ------------- desktop file icons ------------- */
+
+#define MAX_FILE_ICONS 16
+#define FICON_SIZE     56
+#define FICON_LABEL_H  12
+
+struct file_icon {
+    int      used;
+    char     name[32];          /* fs file name */
+    int      x, y;
+    uint32_t color;
+};
+
+static struct file_icon ficons[MAX_FILE_ICONS];
+
+/* Drag state for desktop icons. */
+static int dicon_drag_idx = -1;
+static int dicon_drag_off_x;
+static int dicon_drag_off_y;
+static int dicon_press_idx = -1;
+static int dicon_press_x, dicon_press_y;
+static int dicon_drag_started;
+#define DRAG_THRESH 5
+
+static int icon_visible_area(int y) {
+    /* Icons live between the top bar and the dock. */
+    return y >= DESKTOP_TOPBAR_H + 4
+        && y <  (int)FB_HEIGHT - DESKTOP_DOCK_H - FICON_SIZE - FICON_LABEL_H;
+}
+
+static struct file_icon *find_or_alloc_icon(const char *name) {
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (ficons[i].used) {
+            int eq = 1;
+            for (int k = 0; k < (int)sizeof(ficons[i].name); k++) {
+                if (ficons[i].name[k] != name[k]) { eq = 0; break; }
+                if (name[k] == 0) break;
+            }
+            if (eq) return &ficons[i];
+        }
+    }
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (!ficons[i].used) {
+            ficons[i].used = 1;
+            int k = 0;
+            while (k + 1 < (int)sizeof(ficons[i].name) && name[k]) {
+                ficons[i].name[k] = name[k]; k++;
+            }
+            ficons[i].name[k] = 0;
+            ficons[i].color = color_for(name);
+            ficons[i].x = -1;  /* mark unplaced */
+            return &ficons[i];
+        }
+    }
+    return 0;
+}
+
+/* Re-derive the icon set from the fs each call. Preserves positions
+ * for existing icons; auto-lays-out new ones in a top-down grid. */
+static void sync_icons_from_fs(void) {
+    /* mark all as candidates for removal first */
+    static int seen[MAX_FILE_ICONS];
+    for (int i = 0; i < MAX_FILE_ICONS; i++) seen[i] = 0;
+
+    int next_x = 16;
+    int next_y = DESKTOP_TOPBAR_H + 12;
+
+    for (int i = 0; i < 16; i++) {
+        fs_file_t *f = fs_at(i);
+        if (!f) continue;
+        struct file_icon *it = find_or_alloc_icon(f->name);
+        if (!it) continue;
+        int idx = (int)(it - ficons);
+        seen[idx] = 1;
+        if (it->x < 0) {
+            /* fresh icon -> auto-place */
+            it->x = next_x;
+            it->y = next_y;
+            next_y += FICON_SIZE + FICON_LABEL_H + 14;
+            if (next_y > (int)FB_HEIGHT - DESKTOP_DOCK_H - FICON_SIZE - 30) {
+                next_y = DESKTOP_TOPBAR_H + 12;
+                next_x += FICON_SIZE + 28;
+            }
+        }
+    }
+
+    /* drop icons whose backing files are gone */
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (ficons[i].used && !seen[i]) {
+            ficons[i].used = 0;
+            ficons[i].name[0] = 0;
+        }
+    }
+}
+
+static int hits_ficon(struct file_icon *it, int32_t mx, int32_t my) {
+    return mx >= it->x && mx < it->x + FICON_SIZE
+        && my >= it->y && my < it->y + FICON_SIZE;
+}
+
+static void paint_file_icons(void) {
+    sync_icons_from_fs();
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (!ficons[i].used) continue;
+        struct file_icon *it = &ficons[i];
+
+        /* page background */
+        fb_fill_rect((uint32_t)it->x, (uint32_t)it->y,
+                     FICON_SIZE, FICON_SIZE, 0x00ffffff);
+        fb_fill_rect((uint32_t)it->x + 1, (uint32_t)it->y + 1,
+                     FICON_SIZE - 2, FICON_SIZE - 2, 0x00f0f4ff);
+        /* folded corner */
+        fb_fill_rect((uint32_t)(it->x + FICON_SIZE - 12),
+                     (uint32_t)it->y, 12, 12, it->color);
+        /* lines on the page */
+        for (int row = 18; row < FICON_SIZE - 6; row += 6) {
+            fb_fill_rect((uint32_t)(it->x + 6),
+                         (uint32_t)(it->y + row),
+                         FICON_SIZE - 12, 1, 0x00b0b8c8);
+        }
+
+        /* label centered below */
+        int label_len = 0; while (it->name[label_len]) label_len++;
+        int max_chars = (FICON_SIZE + 16) / 8;
+        if (label_len > max_chars) label_len = max_chars;
+        int label_w = label_len * 8;
+        int label_x = it->x + FICON_SIZE / 2 - label_w / 2;
+        char label[32];
+        for (int k = 0; k < label_len; k++) label[k] = it->name[k];
+        label[label_len] = 0;
+        fb_draw_string((uint32_t)label_x,
+                       (uint32_t)(it->y + FICON_SIZE + 2),
+                       label, TOP_FG, 1);
+    }
+}
+
+/* Open a viewer window for a fs file. */
+static void open_viewer(const char *name) {
+    fs_file_t *f = fs_find(name);
+    if (!f) return;
+    char title[40];
+    int t = 0;
+    const char *p = "View: ";
+    while (*p && t + 1 < (int)sizeof(title)) title[t++] = *p++;
+    int n = 0;
+    while (name[n] && t + 1 < (int)sizeof(title)) title[t++] = name[n++];
+    title[t] = 0;
+
+    window_t *w = window_create(title, 120, 80);
+    if (!w) {
+        console_printf("desktop: too many windows; close one first\n");
+        return;
+    }
+    window_clear(w);
+    for (uint32_t i = 0; i < f->size && i < 4096; i++) {
+        char c = (char)f->data[i];
+        if (c == 0) break;
+        window_putc(w, c);
+    }
+    window_set_focus(w);
+}
+
 void desktop_paint_chrome(void) {
     paint_top_bar();
+    paint_file_icons();
     paint_dock();
 }
 
@@ -273,24 +439,83 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
         return 1;
     }
 
-    int dock_top = (int)FB_HEIGHT - DESKTOP_DOCK_H;
-    if (my < dock_top) return 0;
-
     int left = buttons & 0x1;
     int prev_left = prev_buttons & 0x1;
+    int press   = left && !prev_left;
+    int release = !left && prev_left;
 
-    /* Track press on icon while button is down so we can render the
-     * pressed (sunken) state and only fire on release. */
+    int dock_top = (int)FB_HEIGHT - DESKTOP_DOCK_H;
+
+    /* ---- desktop-area: file icons ---- */
+    if (my >= DESKTOP_TOPBAR_H && my < dock_top) {
+        if (press) {
+            for (int i = 0; i < MAX_FILE_ICONS; i++) {
+                if (!ficons[i].used) continue;
+                if (hits_ficon(&ficons[i], mx, my)) {
+                    dicon_press_idx     = i;
+                    dicon_press_x       = (int)mx;
+                    dicon_press_y       = (int)my;
+                    dicon_drag_off_x    = (int)mx - ficons[i].x;
+                    dicon_drag_off_y    = (int)my - ficons[i].y;
+                    dicon_drag_started  = 0;
+                    return 1;
+                }
+            }
+            return 0;  /* clicked empty desktop -> let windows handle it */
+        }
+
+        if (left && dicon_press_idx >= 0) {
+            /* track for drag start */
+            int dx = (int)mx - dicon_press_x;
+            int dy = (int)my - dicon_press_y;
+            if (!dicon_drag_started &&
+                (dx > DRAG_THRESH || dx < -DRAG_THRESH ||
+                 dy > DRAG_THRESH || dy < -DRAG_THRESH)) {
+                dicon_drag_started = 1;
+                dicon_drag_idx = dicon_press_idx;
+            }
+            if (dicon_drag_idx >= 0) {
+                int nx = (int)mx - dicon_drag_off_x;
+                int ny = (int)my - dicon_drag_off_y;
+                if (nx < 0) nx = 0;
+                if (ny < DESKTOP_TOPBAR_H + 2) ny = DESKTOP_TOPBAR_H + 2;
+                if (nx > (int)FB_WIDTH  - FICON_SIZE) nx = FB_WIDTH - FICON_SIZE;
+                if (ny > dock_top - FICON_SIZE - FICON_LABEL_H)
+                    ny = dock_top - FICON_SIZE - FICON_LABEL_H;
+                ficons[dicon_drag_idx].x = nx;
+                ficons[dicon_drag_idx].y = ny;
+            }
+            return 1;
+        }
+
+        if (release && dicon_press_idx >= 0) {
+            int idx = dicon_press_idx;
+            int was_drag = dicon_drag_started;
+            dicon_press_idx    = -1;
+            dicon_drag_idx     = -1;
+            dicon_drag_started = 0;
+            if (!was_drag) {
+                /* simple click on icon -> open viewer */
+                open_viewer(ficons[idx].name);
+            }
+            return 1;
+        }
+
+        (void)icon_visible_area;  /* reserved for folder-drop later */
+        return 0;
+    }
+
+    /* ---- dock area ---- */
+    if (my < dock_top) return 0;
+
     int hovered = -1;
     for (int i = 0; i < dock_count; i++) {
         if (hits_icon(&dock[i], mx, my)) { hovered = i; break; }
     }
-
     for (int i = 0; i < dock_count; i++) dock[i].pressed = 0;
     if (left && hovered >= 0) dock[hovered].pressed = 1;
 
-    if (!left && prev_left && hovered >= 0) {
-        /* release-on-icon -> launch */
+    if (release && hovered >= 0) {
         const char *name = dock[hovered].name;
         console_printf("\ndock: launching %s\n", name);
         int id = pkg_run_by_name(name);
@@ -299,8 +524,5 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
         }
         return 1;
     }
-
-    /* in dock area: consume the click so it doesn't fall through to
-     * a window drag */
     return 1;
 }

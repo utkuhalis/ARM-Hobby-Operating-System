@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "console.h"
 #include "shell.h"
+#include "str.h"
 #include "fs.h"
 #include "sysinfo.h"
 #include "heap.h"
@@ -177,6 +178,21 @@ static void post(void) {
         }
         console_printf("                pkgstore: %d package%s installed\n",
                        installed, installed == 1 ? "" : "s");
+        /* Seed the desktop with a couple of files on a fresh disk so
+         * the icon area isn't empty and the user has something to
+         * click. Skipped silently if these names already exist. */
+        if (!fs_find("readme")) {
+            const char *msg =
+                "Welcome to Hobby ARM OS!\n\n"
+                "- Drag this icon around the desktop with the mouse.\n"
+                "- Click an icon to open the file in a viewer.\n"
+                "- Use the dock at the bottom to launch installed apps.\n"
+                "- Use 'pkg install <name>' from the terminal.\n";
+            (void)fs_write("readme", msg, (uint32_t)strlen(msg));
+        }
+        if (!fs_find("notes")) {
+            (void)fs_write("notes", "scratch pad\n", 12);
+        }
     } else {
         console_puts("[ -- ] Block    no virtio-blk found\n");
     }
