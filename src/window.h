@@ -14,10 +14,12 @@
 #define WIN_KIND_TEXT   0
 #define WIN_KIND_WIDGET 1
 
-#define WIDGET_LABEL  0
-#define WIDGET_BUTTON 1
+#define WIDGET_LABEL      0
+#define WIDGET_BUTTON     1
+#define WIDGET_TEXT_INPUT 2
 
 #define WIDGET_TEXT_MAX 24
+#define WIDGET_INPUT_MAX 64
 #define WIN_MAX_WIDGETS 64
 
 struct window;
@@ -28,6 +30,12 @@ typedef struct widget {
     char  text[WIDGET_TEXT_MAX];
     int   pressed;
     void (*on_click)(struct window *win, struct widget *self);
+
+    /* WIDGET_TEXT_INPUT-only fields */
+    char  input[WIDGET_INPUT_MAX];
+    int   input_len;
+    int   input_focus;
+    void (*on_submit)(struct window *win, struct widget *self);
 } widget_t;
 
 typedef struct window {
@@ -58,6 +66,11 @@ void     widget_set_text(widget_t *g, const char *text);
 widget_t *window_add_button(window_t *w, int x, int y, int width,
                             const char *text,
                             void (*on_click)(window_t *, widget_t *));
+widget_t *window_add_text_input(window_t *w, int x, int y, int width,
+                                const char *placeholder,
+                                void (*on_submit)(window_t *, widget_t *));
+const char *widget_input_text(widget_t *g);
+void        widget_input_clear(widget_t *g);
 void     window_close(window_t *w);
 void     window_clear(window_t *w);
 void     window_putc(window_t *w, char c);
@@ -73,5 +86,10 @@ window_t *window_at(int idx);
 /* Pointer event dispatcher: call once per tick with the latest cursor
  * state. Handles click-to-focus and title-bar dragging. */
 void     window_handle_pointer(int32_t mx, int32_t my, int buttons);
+
+/* Route a single typed character to the focused text-input widget.
+ * Returns 1 if it was consumed, 0 if no input had focus and the
+ * caller should treat the character as regular shell input. */
+int      window_handle_keyboard(char c);
 
 #endif

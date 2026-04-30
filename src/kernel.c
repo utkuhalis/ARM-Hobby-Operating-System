@@ -228,7 +228,10 @@ static window_t *win_monitor;
 static window_t *win_about;
 static window_t *win_calc;
 static window_t *win_store;
+static window_t *win_notepad;
 static widget_t *calc_display;
+static widget_t *notepad_input;
+static widget_t *notepad_status;
 
 /* ---------------- App Store ---------------- */
 
@@ -358,6 +361,55 @@ static void calc_clear(window_t *w, widget_t *g) {
     calc_op = 0;
     calc_after_eq = 0;
     calc_render();
+}
+
+/* ---------------- Notepad ---------------- */
+
+#include "fs.h"
+
+static void notepad_save_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    if (!notepad_input) return;
+    const char *txt = widget_input_text(notepad_input);
+    int n = 0;
+    while (txt[n]) n++;
+    if (fs_write("notes", txt, (uint32_t)n) == 0) {
+        widget_set_text(notepad_status, "saved -> /notes");
+    } else {
+        widget_set_text(notepad_status, "save failed");
+    }
+}
+
+static void notepad_load_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    if (!notepad_input) return;
+    fs_file_t *f = fs_find("notes");
+    if (!f) {
+        widget_set_text(notepad_status, "no /notes yet");
+        return;
+    }
+    /* copy file contents into the input buffer */
+    widget_input_clear(notepad_input);
+    for (uint32_t i = 0; i < f->size && i < WIDGET_INPUT_MAX - 1; i++) {
+        char c = (char)f->data[i];
+        if (c == '\n') break;
+        if (notepad_input->input_len + 1 < WIDGET_INPUT_MAX) {
+            notepad_input->input[notepad_input->input_len++] = c;
+            notepad_input->input[notepad_input->input_len]   = '\0';
+        }
+    }
+    widget_set_text(notepad_status, "loaded /notes");
+}
+
+static void build_notepad_window(void) {
+    win_notepad = window_create_widget("Notepad", 16, 540, 480, 64);
+    window_add_label(win_notepad,  10,  4, 460, "Type a note, then Save:");
+    notepad_input  = window_add_text_input(win_notepad, 10, 22, 280,
+                                           "(click here, then type)",
+                                           notepad_save_cb);
+    window_add_button(win_notepad, 296, 18, 80, "Save", notepad_save_cb);
+    window_add_button(win_notepad, 380, 18, 80, "Load", notepad_load_cb);
+    notepad_status = window_add_label(win_notepad, 10, 44, 460, "");
 }
 
 static void build_calculator_window(void) {
@@ -538,6 +590,7 @@ void kernel_main(void) {
 
         build_calculator_window();
         build_store_window();
+        build_notepad_window();
     }
 #endif
 

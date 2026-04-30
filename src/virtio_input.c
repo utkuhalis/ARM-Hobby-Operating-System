@@ -3,6 +3,7 @@
 #include "virtio_input.h"
 #include "virtio_mouse.h"
 #include "gic.h"
+#include "window.h"
 
 #define MMIO_VERSION             0x004
 #define MMIO_DEVICE_FEATURES_SEL 0x014
@@ -176,7 +177,13 @@ static void handle_event(const struct input_event *ev) {
 
     char c = shift_held ? keymap_upper[ev->code & 0xff] : 0;
     if (c == 0) c = keymap_lower[ev->code & 0xff];
-    if (c != 0) kbd_push(c);
+    if (c != 0) {
+        /* If a text-input widget has keyboard focus, route the
+         * character there. Otherwise it's regular shell input. */
+        if (!window_handle_keyboard(c)) {
+            kbd_push(c);
+        }
+    }
 }
 
 static void process_used(void) {
