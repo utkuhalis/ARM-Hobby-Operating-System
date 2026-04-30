@@ -405,7 +405,10 @@ static void status_thread(void *arg) {
         }
         window_compose();
 #endif
-        for (int i = 0; i < 5; i++) task_yield();
+        /* Single yield + wfi keeps the render loop tight: at 250 Hz
+         * timer ticks the compositor refreshes every ~4 ms, which is
+         * fast enough to feel responsive without burning CPU. */
+        task_yield();
         __asm__ volatile("wfi");
     }
 }
@@ -414,7 +417,9 @@ static void ticker_thread(void *arg) {
     (void)arg;
     for (;;) {
         ticker_beats++;
-        task_yield();
+        /* Don't yield: just sleep to the next timer tick. Yielding
+         * here ends up bouncing between tasks every interrupt and
+         * starves the compositor of CPU time. */
         __asm__ volatile("wfi");
     }
 }
@@ -449,7 +454,7 @@ void kernel_main(void) {
     uart_init();
 
 #ifdef BOARD_HAS_GIC
-    timer_init(100);
+    timer_init(250);
     vinput_init();
     vmouse_init();
     vblk_init();
