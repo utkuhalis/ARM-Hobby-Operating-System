@@ -1,0 +1,13 @@
+{
+  "schema":  1,
+  "name":    "files",
+  "version": "0.1.0",
+  "summary": "list and dump RAM filesystem contents",
+  "license": "MIT",
+  "open_source": true,
+  "author":      "Hobby ARM OS",
+  "exec":        "/packages/files/files.elf",
+  "sha256":      "TODO",
+  "depends":     ["fs"],
+  "syscalls":    ["write", "list_dir", "read_file", "exit"]
+}

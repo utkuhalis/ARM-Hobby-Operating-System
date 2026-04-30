@@ -1,0 +1,16 @@
+{
+  "schema":  1,
+  "name":    "weather",
+  "version": "0.0.1",
+  "summary": "(closed-source demo) prints today's weather",
+  "description": "Demonstrates that the package format supports closed-source binaries: the manifest is plaintext, but the .elf payload ships compiled with no source URL.",
+  "license":      "Proprietary",
+  "open_source":  false,
+  "author":       "ACME Corp",
+  "homepage":     "https://acme.example.com/weather",
+  "exec":         "/packages/weather/weather.elf",
+  "sha256":       "TODO",
+  "size":         0,
+  "depends":      ["net"],
+  "syscalls":     ["write", "tcp_connect", "tcp_send", "tcp_recv", "exit"]
+}

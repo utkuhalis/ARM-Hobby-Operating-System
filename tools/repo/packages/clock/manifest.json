@@ -1,0 +1,13 @@
+{
+  "schema":  1,
+  "name":    "clock",
+  "version": "1.0.0",
+  "summary": "tick-tock demo, exits after a few iterations",
+  "license": "MIT",
+  "open_source": true,
+  "author":      "Hobby ARM OS",
+  "exec":        "/packages/clock/clock.elf",
+  "sha256":      "TODO",
+  "depends":     [],
+  "syscalls":    ["write", "yield", "exit"]
+}

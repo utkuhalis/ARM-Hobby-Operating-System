@@ -193,6 +193,26 @@ drive the cursor over the serial line if no GUI input is available.
    the Pi. The shell prompt comes up over the serial line; commands like
    `cpuinfo` will report the actual Pi 5 CPU (Cortex-A76).
 
+## Package repository
+
+Hobby ARM OS treats everything above the kernel as a package -- the
+desktop apps, system tools, even closed-source third-party binaries
+ship through the same channel. The `tools/repo/` directory holds an
+HTTP-served catalogue with one manifest per package:
+
+```sh
+docker build -t hobby-os-repo tools/repo
+docker run --rm -p 8080:8080 hobby-os-repo
+curl http://localhost:8080/index.json
+```
+
+Each package is a directory under `tools/repo/packages/<name>/`
+containing a `manifest.json` (name, version, license, open/closed
+source, sha256, declared syscalls) plus the AArch64 ELF binary the
+guest will load. Once the kernel-side TCP/IP stack lands, the App
+Store window will fetch this index over HTTP and stream packages
+straight onto the in-RAM filesystem.
+
 ## Project layout
 
 ```
@@ -227,9 +247,15 @@ hobby-os/
 ├── linker/
 │   ├── qemu-virt.ld      # load at 0x40000000
 │   └── raspi5.ld         # load at 0x80000
-└── scripts/
-    ├── run-qemu.sh
-    └── screenshot.sh
+├── scripts/
+│   ├── run-qemu.sh
+│   └── screenshot.sh
+└── tools/
+    └── repo/             # Docker-served HTTP package repository
+        ├── Dockerfile
+        ├── serve.py
+        ├── index.json
+        └── packages/<name>/manifest.json
 ```
 
 ## Roadmap

@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "name": "hobby-os main repo",
+  "url":  "http://localhost:8080",
+  "updated": "2026-04-30",
+  "packages": [
+    {
+      "name":     "hello",
+      "version":  "1.0.0",
+      "summary":  "one-shot greeting from a user task",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/hello/manifest.json"
+    },
+    {
+      "name":     "counter",
+      "version":  "1.0.0",
+      "summary":  "prints 1..5 with little pauses",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/counter/manifest.json"
+    },
+    {
+      "name":     "clock",
+      "version":  "1.0.0",
+      "summary":  "tick-tock demo, exits after a few iterations",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/clock/manifest.json"
+    },
+    {
+      "name":     "notepad",
+      "version":  "0.1.0",
+      "summary":  "tiny notes editor backed by the RAM filesystem",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/notepad/manifest.json"
+    },
+    {
+      "name":     "files",
+      "version":  "0.1.0",
+      "summary":  "list and dump RAM filesystem contents",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/files/manifest.json"
+    },
+    {
+      "name":     "sysinfo",
+      "version":  "0.1.0",
+      "summary":  "dump CPU + memory + uptime info",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/sysinfo/manifest.json"
+    },
+    {
+      "name":     "weather",
+      "version":  "0.0.1",
+      "summary":  "(closed-source demo) prints today's weather",
+      "license":  "Proprietary",
+      "author":   "ACME Corp",
+      "manifest": "/packages/weather/manifest.json"
+    }
+  ]
+}

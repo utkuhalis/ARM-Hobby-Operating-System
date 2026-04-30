@@ -1,0 +1,13 @@
+{
+  "schema":  1,
+  "name":    "notepad",
+  "version": "0.1.0",
+  "summary": "tiny notes editor backed by the RAM filesystem",
+  "license": "MIT",
+  "open_source": true,
+  "author":      "Hobby ARM OS",
+  "exec":        "/packages/notepad/notepad.elf",
+  "sha256":      "TODO",
+  "depends":     ["fs"],
+  "syscalls":    ["write", "read_file", "write_file", "exit"]
+}

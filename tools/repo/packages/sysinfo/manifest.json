@@ -1,0 +1,13 @@
+{
+  "schema":  1,
+  "name":    "sysinfo",
+  "version": "0.1.0",
+  "summary": "dump CPU + memory + uptime info",
+  "license": "MIT",
+  "open_source": true,
+  "author":      "Hobby ARM OS",
+  "exec":        "/packages/sysinfo/sysinfo.elf",
+  "sha256":      "TODO",
+  "depends":     [],
+  "syscalls":    ["write", "uname", "uptime", "exit"]
+}
