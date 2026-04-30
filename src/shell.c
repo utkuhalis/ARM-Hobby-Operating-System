@@ -15,6 +15,7 @@
 #include "task.h"
 #include "user_program.h"
 #include "virtio_net.h"
+#include "virtio_mouse.h"
 #endif
 
 #define LINE_MAX  256
@@ -53,6 +54,9 @@ static void cmd_users(int argc, char **argv);
 static void cmd_pkg(int argc, char **argv);
 static void cmd_elfinfo(int argc, char **argv);
 #ifdef BOARD_HAS_GIC
+static void cmd_mouse(int argc, char **argv);
+#endif
+#ifdef BOARD_HAS_GIC
 static void cmd_ps(int argc, char **argv);
 static void cmd_run(int argc, char **argv);
 static void cmd_save(int argc, char **argv);
@@ -86,6 +90,9 @@ static const struct cmd cmds[] = {
     {"users",   cmd_users,   "list known accounts"},
     {"pkg",     cmd_pkg,     "package manager (list/install/remove)"},
     {"elfinfo", cmd_elfinfo, "inspect an ELF file in the RAM filesystem"},
+#ifdef BOARD_HAS_GIC
+    {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
+#endif
     {"halt",    cmd_halt,    "shut down the system"},
     {"reboot",  cmd_reboot,  "reboot the system"},
     {0, 0, 0},
@@ -389,6 +396,54 @@ static void cmd_pkg(int argc, char **argv) {
     }
     console_printf("pkg: unknown subcommand %s\n", argv[1]);
 }
+
+#ifdef BOARD_HAS_GIC
+static int parse_uint(const char *s) {
+    int v = 0;
+    while (*s >= '0' && *s <= '9') { v = v * 10 + (*s - '0'); s++; }
+    return v;
+}
+
+static void cmd_mouse(int argc, char **argv) {
+    if (argc < 2) {
+        console_puts("usage:\n"
+                     "  mouse up|down|left|right [pixels]\n"
+                     "  mouse to X Y\n"
+                     "  mouse click\n");
+        return;
+    }
+    const char *cmd = argv[1];
+    int step = (argc >= 3) ? parse_uint(argv[2]) : 16;
+    if (step <= 0) step = 16;
+
+    if (strcmp(cmd, "up") == 0) {
+        vmouse_inject_move(0, -step);
+    } else if (strcmp(cmd, "down") == 0) {
+        vmouse_inject_move(0, +step);
+    } else if (strcmp(cmd, "left") == 0) {
+        vmouse_inject_move(-step, 0);
+    } else if (strcmp(cmd, "right") == 0) {
+        vmouse_inject_move(+step, 0);
+    } else if (strcmp(cmd, "to") == 0 && argc >= 4) {
+        int32_t mx = 0, my = 0;
+        vmouse_position(&mx, &my);
+        int tx = parse_uint(argv[2]);
+        int ty = parse_uint(argv[3]);
+        vmouse_inject_move(tx - (int)mx, ty - (int)my);
+    } else if (strcmp(cmd, "click") == 0) {
+        vmouse_inject_button(1);
+        for (int i = 0; i < 12; i++) task_yield();
+        vmouse_inject_button(0);
+    } else {
+        console_printf("mouse: unknown action '%s'\n", cmd);
+        return;
+    }
+
+    int32_t mx = 0, my = 0;
+    vmouse_position(&mx, &my);
+    console_printf("cursor at %ld, %ld\n", (long)mx, (long)my);
+}
+#endif
 
 static void cmd_elfinfo(int argc, char **argv) {
     if (argc < 2) {
