@@ -17,16 +17,21 @@ struct ramfb_cfg {
     uint32_t stride;
 } __attribute__((packed));
 
-static uint8_t fb_buffer[FB_WIDTH * FB_HEIGHT * FB_BPP]
+/* Front buffer: what ramfb shows the host. Back buffer: what the
+ * kernel composes into. fb_present copies back -> front in one go so
+ * the host never sees a half-rendered frame. */
+static uint8_t fb_front[FB_WIDTH * FB_HEIGHT * FB_BPP]
+    __attribute__((aligned(4096)));
+static uint8_t fb_back [FB_WIDTH * FB_HEIGHT * FB_BPP]
     __attribute__((aligned(4096)));
 
 static uint32_t *fb_pixels(void) {
-    return (uint32_t *)fb_buffer;
+    return (uint32_t *)fb_back;
 }
 
 int fb_init(void) {
     struct ramfb_cfg cfg = {
-        .addr   = __builtin_bswap64((uint64_t)(uintptr_t)fb_buffer),
+        .addr   = __builtin_bswap64((uint64_t)(uintptr_t)fb_front),
         .fourcc = __builtin_bswap32(DRM_FORMAT_XRGB8888),
         .flags  = 0,
         .width  = __builtin_bswap32(FB_WIDTH),
@@ -34,6 +39,18 @@ int fb_init(void) {
         .stride = __builtin_bswap32(FB_STRIDE),
     };
     return fw_cfg_write_named("etc/ramfb", &cfg, sizeof(cfg));
+}
+
+void fb_present(void) {
+    /* Bulk copy of the composed back buffer into the front buffer
+     * the ramfb device DMAs from. 8-byte stride keeps the inner loop
+     * tight; ~1.9 MiB / frame at 60 fps is fine on cortex-a72. */
+    const uint64_t *src = (const uint64_t *)fb_back;
+    uint64_t *dst       = (uint64_t *)fb_front;
+    uint32_t  n         = (FB_WIDTH * FB_HEIGHT * FB_BPP) / 8;
+    for (uint32_t i = 0; i < n; i++) {
+        dst[i] = src[i];
+    }
 }
 
 void fb_clear(uint32_t color) {

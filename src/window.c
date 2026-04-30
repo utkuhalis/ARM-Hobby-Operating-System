@@ -406,4 +406,8 @@ void window_compose(void) {
         fb_draw_cursor((uint32_t)mx, (uint32_t)my, CURSOR_COLOR);
     }
 #endif
+
+    /* Flip the back buffer to the front buffer so the host sees a
+     * fully composed frame instead of mid-render flicker. */
+    fb_present();
 }

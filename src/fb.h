@@ -16,4 +16,9 @@ void fb_draw_string(uint32_t x, uint32_t y, const char *s, uint32_t color, uint3
 void fb_draw_glyph16(uint32_t x, uint32_t y, char c, uint32_t color);
 void fb_draw_cursor(uint32_t x, uint32_t y, uint32_t color);
 
+/* Copy the back buffer (where everything draws) over the front buffer
+ * the ramfb device is reading. Call once per finished frame so the
+ * host never sees a half-rendered scene. */
+void fb_present(void);
+
 #endif
