@@ -85,6 +85,15 @@ run: $(ELF)
 run-graphic: $(ELF)
 	qemu-system-aarch64 $(QEMU_BASE) -display cocoa -serial stdio -kernel $<
 
+# Full interactive mode: VNC server with input grab. macOS Cocoa
+# doesn't reliably forward mouse/keyboard into virtio-input on its
+# own; a VNC client (e.g. macOS Screen Sharing -> 'vnc://localhost:5901')
+# captures host events properly and pumps them into the guest.
+run-vnc: $(ELF)
+	@echo "QEMU listening on vnc://localhost:5901"
+	@echo "Connect with: open vnc://localhost:5901    (macOS Screen Sharing)"
+	qemu-system-aarch64 $(QEMU_BASE) -display vnc=:1 -serial stdio -kernel $<
+
 screenshot: $(ELF)
 	bash scripts/screenshot.sh
 

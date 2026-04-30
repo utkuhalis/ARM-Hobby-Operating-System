@@ -147,6 +147,7 @@ Install QEMU from [qemu.org](https://www.qemu.org/download/), grab a prebuilt
 make                # build kernel.elf + kernel.img
 make run            # boot to a serial shell in your terminal
 make run-graphic    # also open a QEMU window with the framebuffer
+make run-vnc        # full mouse + keyboard interaction via VNC
 make screenshot     # boot headless and dump the framebuffer to PNG
 
 # Raspberry Pi 5 image
@@ -156,6 +157,22 @@ make BOARD=raspi5
 
 Press `Ctrl-A` then `X` to quit the serial shell. In `run-graphic`, close the
 QEMU window or use the `halt` command from the shell.
+
+### Why three different `run` targets?
+
+`run-graphic` opens a QEMU window via macOS Cocoa, which is great for
+*looking* at the desktop but doesn't reliably forward host mouse and
+keyboard events into the virtio-input devices. Use `run-vnc` for a real
+interactive session: QEMU starts a VNC server on port 5901, and the
+built-in macOS Screen Sharing client (`open vnc://localhost:5901`)
+captures pointer + key events and pumps them straight through to the
+guest. From there, the cursor follows the trackpad, buttons fire, and
+arrow keys / Esc navigate the desktop just like on a real machine.
+
+`run` is the headless serial shell — handy when you don't need the
+graphical desktop at all. The shell also has a `mouse` command
+(`mouse right 200`, `mouse to 470 410`, `mouse click`) so you can
+drive the cursor over the serial line if no GUI input is available.
 
 ### Booting on a real Raspberry Pi 5
 
