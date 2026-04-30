@@ -57,17 +57,78 @@ window_t *window_create(const char *title, int x, int y) {
     copy_title(w->title, title);
     w->visible = 1;
     w->focused = (window_n == 0);
+    w->kind    = WIN_KIND_TEXT;
     w->bg      = WIN_BG;
     w->fg      = WIN_FG;
     w->accent  = WIN_ACCENT;
     w->cur_row = 0;
     w->cur_col = 0;
+    w->widget_count = 0;
     for (int r = 0; r < WIN_ROWS; r++)
         for (int c = 0; c < WIN_COLS; c++)
             w->text[r][c] = ' ';
     if (focus_idx < 0) focus_idx = window_n;
     window_n++;
     return w;
+}
+
+window_t *window_create_widget(const char *title, int x, int y, int w, int h) {
+    if (window_n >= MAX_WINDOWS) return NULL;
+    window_t *win = &windows[window_n];
+    win->id      = window_n;
+    win->x       = x;
+    win->y       = y;
+    win->w       = w;
+    win->h       = h;
+    copy_title(win->title, title);
+    win->visible = 1;
+    win->focused = 0;
+    win->kind    = WIN_KIND_WIDGET;
+    win->bg      = WIN_BG;
+    win->fg      = WIN_FG;
+    win->accent  = WIN_ACCENT;
+    win->widget_count = 0;
+    if (focus_idx < 0) focus_idx = window_n;
+    window_n++;
+    return win;
+}
+
+static void copy_widget_text(char *dst, const char *src) {
+    int i = 0;
+    while (i < WIDGET_TEXT_MAX - 1 && src[i]) { dst[i] = src[i]; i++; }
+    dst[i] = '\0';
+}
+
+widget_t *window_add_label(window_t *w, int x, int y,
+                           int width, const char *text) {
+    if (!w || w->widget_count >= WIN_MAX_WIDGETS) return NULL;
+    widget_t *g = &w->widgets[w->widget_count++];
+    g->type   = WIDGET_LABEL;
+    g->x = x; g->y = y;
+    g->w = width; g->h = WIN_CHAR_H;
+    g->pressed = 0;
+    g->on_click = NULL;
+    copy_widget_text(g->text, text);
+    return g;
+}
+
+widget_t *window_add_button(window_t *w, int x, int y, int width,
+                            const char *text,
+                            void (*on_click)(window_t *, widget_t *)) {
+    if (!w || w->widget_count >= WIN_MAX_WIDGETS) return NULL;
+    widget_t *g = &w->widgets[w->widget_count++];
+    g->type   = WIDGET_BUTTON;
+    g->x = x; g->y = y;
+    g->w = width; g->h = WIN_CHAR_H + 6;
+    g->pressed  = 0;
+    g->on_click = on_click;
+    copy_widget_text(g->text, text);
+    return g;
+}
+
+void window_close(window_t *w) {
+    if (!w) return;
+    w->visible = 0;
 }
 
 void window_clear(window_t *w) {
@@ -158,6 +219,21 @@ static int point_in_titlebar(window_t *w, int x, int y) {
            y >= w->y && y < w->y + WIN_TITLE_H;
 }
 
+static widget_t *widget_at(window_t *w, int gx, int gy) {
+    if (w->kind != WIN_KIND_WIDGET) return NULL;
+    int local_x = gx - w->x - WIN_BORDER;
+    int local_y = gy - w->y - WIN_TITLE_H;
+    for (int i = 0; i < w->widget_count; i++) {
+        widget_t *g = &w->widgets[i];
+        if (g->type != WIDGET_BUTTON) continue;
+        if (local_x >= g->x && local_x < g->x + g->w &&
+            local_y >= g->y && local_y < g->y + g->h) {
+            return g;
+        }
+    }
+    return NULL;
+}
+
 void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
     int left_now  = (buttons & 1) != 0;
     int left_prev = (prev_buttons & 1) != 0;
@@ -168,11 +244,13 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
         /* topmost window under the cursor wins (focused first, then later) */
         int hit = -1;
         if (focus_idx >= 0 && focus_idx < window_n &&
+            windows[focus_idx].visible &&
             point_in_window(&windows[focus_idx], (int)mx, (int)my)) {
             hit = focus_idx;
         } else {
             for (int i = window_n - 1; i >= 0; i--) {
-                if (point_in_window(&windows[i], (int)mx, (int)my)) {
+                if (windows[i].visible &&
+                    point_in_window(&windows[i], (int)mx, (int)my)) {
                     hit = i;
                     break;
                 }
@@ -180,7 +258,10 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
         }
         if (hit >= 0) {
             window_set_focus(&windows[hit]);
-            if (point_in_titlebar(&windows[hit], (int)mx, (int)my)) {
+            widget_t *g = widget_at(&windows[hit], (int)mx, (int)my);
+            if (g) {
+                g->pressed = 1;
+            } else if (point_in_titlebar(&windows[hit], (int)mx, (int)my)) {
                 drag_active = 1;
                 drag_window = hit;
                 drag_off_x  = (int)mx - windows[hit].x;
@@ -203,9 +284,59 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
     if (release) {
         drag_active = 0;
         drag_window = -1;
+
+        /* fire button click on release if cursor is still over a pressed
+         * button in the focused window */
+        if (focus_idx >= 0 && focus_idx < window_n) {
+            window_t *w = &windows[focus_idx];
+            for (int i = 0; i < w->widget_count; i++) {
+                widget_t *g = &w->widgets[i];
+                if (g->type != WIDGET_BUTTON) continue;
+                if (g->pressed) {
+                    widget_t *over = widget_at(w, (int)mx, (int)my);
+                    if (over == g && g->on_click) {
+                        g->on_click(w, g);
+                    }
+                    g->pressed = 0;
+                }
+            }
+        }
     }
 
     prev_buttons = buttons;
+}
+
+static void draw_widget(window_t *w, widget_t *g) {
+    int wx = w->x + WIN_BORDER + g->x;
+    int wy = w->y + WIN_TITLE_H + g->y;
+
+    if (g->type == WIDGET_BUTTON) {
+        uint32_t bg = g->pressed ? 0x00355077u : 0x002a3e60u;
+        uint32_t edge = 0x00708ab0u;
+        fb_fill_rect(wx, wy, g->w, g->h, bg);
+        fb_fill_rect(wx, wy, g->w, 1, edge);
+        fb_fill_rect(wx, wy + g->h - 1, g->w, 1, edge);
+        fb_fill_rect(wx, wy, 1, g->h, edge);
+        fb_fill_rect(wx + g->w - 1, wy, 1, g->h, edge);
+
+        /* center the label horizontally */
+        int len = 0;
+        while (len < WIDGET_TEXT_MAX && g->text[len]) len++;
+        int text_w = len * WIN_CHAR_W;
+        int tx = wx + (g->w - text_w) / 2;
+        int ty = wy + (g->h - 16) / 2;
+        for (int i = 0; i < len; i++) {
+            fb_draw_glyph16((uint32_t)(tx + i * WIN_CHAR_W),
+                            (uint32_t)ty, g->text[i], 0x00e0e6f0u);
+        }
+        return;
+    }
+
+    /* WIDGET_LABEL */
+    for (int i = 0; i < WIDGET_TEXT_MAX && g->text[i]; i++) {
+        fb_draw_glyph16((uint32_t)(wx + i * WIN_CHAR_W),
+                        (uint32_t)wy, g->text[i], w->fg);
+    }
 }
 
 static void paint_window(window_t *w) {
@@ -230,7 +361,15 @@ static void paint_window(window_t *w) {
     int cw = w->w - 2 * WIN_BORDER;
     int ch = w->h - WIN_TITLE_H - WIN_BORDER;
     fb_fill_rect(cx, cy, cw, ch, w->bg);
-    /* Content text */
+
+    if (w->kind == WIN_KIND_WIDGET) {
+        for (int i = 0; i < w->widget_count; i++) {
+            draw_widget(w, &w->widgets[i]);
+        }
+        return;
+    }
+
+    /* WIN_KIND_TEXT */
     for (int r = 0; r < WIN_ROWS; r++) {
         for (int c = 0; c < WIN_COLS; c++) {
             char ch_ = w->text[r][c];

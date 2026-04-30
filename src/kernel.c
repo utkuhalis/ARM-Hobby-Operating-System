@@ -224,6 +224,12 @@ static void format_uint(char *buf, uint64_t v) {
 
 static window_t *win_terminal;
 static window_t *win_monitor;
+static window_t *win_about;
+
+static void about_close_cb(window_t *w, widget_t *g) {
+    (void)g;
+    window_close(w);
+}
 
 static void render_monitor_window(void) {
     if (!win_monitor) return;
@@ -329,6 +335,16 @@ void kernel_main(void) {
         win_terminal = window_create("Terminal", 16, 16);
         win_monitor  = window_create("System Monitor",
                                      16 + win_terminal->w + 16, 16);
+
+        /* About window: a real widget-based dialog with labels + a button */
+        win_about = window_create_widget(
+            "About Hobby ARM OS",
+            220, 280, 320, 160);
+        window_add_label (win_about, 12, 14, 280, "Hobby ARM OS  v0.6");
+        window_add_label (win_about, 12, 34, 280, "AArch64 hand-rolled kernel");
+        window_add_label (win_about, 12, 54, 280, "ramfb + virtio + Spleen 8x16");
+        window_add_label (win_about, 12, 80, 280, "Click 'Close' to dismiss.");
+        window_add_button(win_about, 200, 110, 90, "Close", about_close_cb);
     }
 #endif
 

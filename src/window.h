@@ -11,23 +11,53 @@
 #define WIN_TITLE_H   18
 #define WIN_BORDER    1
 
+#define WIN_KIND_TEXT   0
+#define WIN_KIND_WIDGET 1
+
+#define WIDGET_LABEL  0
+#define WIDGET_BUTTON 1
+
+#define WIDGET_TEXT_MAX 24
+#define WIN_MAX_WIDGETS 16
+
+struct window;
+
+typedef struct widget {
+    int   type;
+    int   x, y, w, h;     /* relative to window content area */
+    char  text[WIDGET_TEXT_MAX];
+    int   pressed;
+    void (*on_click)(struct window *win, struct widget *self);
+} widget_t;
+
 typedef struct window {
     int      id;
     int      x, y, w, h;
     char     title[WIN_TITLE_MAX];
     int      visible;
     int      focused;
+    int      kind;
     uint32_t bg;
     uint32_t fg;
     uint32_t accent;
-    /* tiny back buffer of text glyphs */
+    /* tiny back buffer of text glyphs (used when kind == WIN_KIND_TEXT) */
     char     text[WIN_ROWS][WIN_COLS];
     int      cur_row;
     int      cur_col;
+    /* widget tree (used when kind == WIN_KIND_WIDGET) */
+    widget_t widgets[WIN_MAX_WIDGETS];
+    int      widget_count;
 } window_t;
 
 void     window_init(void);
 window_t *window_create(const char *title, int x, int y);
+window_t *window_create_widget(const char *title, int x, int y, int w, int h);
+widget_t *window_add_label(window_t *w, int x, int y,
+                           int width, const char *text);
+widget_t *window_add_button(window_t *w, int x, int y, int width,
+                            const char *text,
+                            void (*on_click)(window_t *, widget_t *));
+void     window_close(window_t *w);
 void     window_clear(window_t *w);
 void     window_putc(window_t *w, char c);
 void     window_puts(window_t *w, const char *s);
