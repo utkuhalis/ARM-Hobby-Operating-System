@@ -32,11 +32,18 @@
 #define EV_SYN 0x00
 #define EV_KEY 0x01
 #define EV_REL 0x02
+#define EV_ABS 0x03
 
 #define REL_X     0
 #define REL_Y     1
+#define ABS_X     0
+#define ABS_Y     1
 #define BTN_LEFT  0x110
 #define BTN_RIGHT 0x111
+
+/* virtio-tablet defaults to a 0..32767 absolute coordinate range.
+ * Map that into our 800x600 framebuffer. */
+#define TABLET_RANGE 32767
 
 struct virtq_desc { uint64_t addr; uint32_t len; uint16_t flags; uint16_t next; };
 struct virtq_avail { uint16_t flags; uint16_t idx; uint16_t ring[QSIZE]; uint16_t used_event; };
@@ -77,6 +84,14 @@ static void handle_event(const struct input_event *ev) {
     if (ev->type == EV_REL) {
         if (ev->code == REL_X) cursor_x += (int32_t)ev->value;
         else if (ev->code == REL_Y) cursor_y += (int32_t)ev->value;
+        clamp();
+    } else if (ev->type == EV_ABS) {
+        /* virtio-tablet: ev->value is in [0..TABLET_RANGE]; rescale */
+        if (ev->code == ABS_X) {
+            cursor_x = ((int64_t)ev->value * 800)  / TABLET_RANGE;
+        } else if (ev->code == ABS_Y) {
+            cursor_y = ((int64_t)ev->value * 600) / TABLET_RANGE;
+        }
         clamp();
     } else if (ev->type == EV_KEY) {
         int bit = (ev->code == BTN_LEFT) ? 1 : (ev->code == BTN_RIGHT) ? 2 : 0;

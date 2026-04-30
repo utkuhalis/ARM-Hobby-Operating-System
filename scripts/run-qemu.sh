@@ -17,5 +17,6 @@ exec qemu-system-aarch64 \
     -m 256M \
     -device ramfb \
     -device virtio-keyboard-device \
+    -device virtio-tablet-device \
     -nographic \
     -kernel "${ELF}"

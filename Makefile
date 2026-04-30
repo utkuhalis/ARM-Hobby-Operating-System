@@ -74,7 +74,7 @@ $(PI_IMG): $(IMG)
 
 QEMU_BASE := -M virt,gic-version=2 -cpu cortex-a72 -smp 4 -m 256M \
              -device ramfb -device virtio-keyboard-device \
-             -device virtio-mouse-device \
+             -device virtio-tablet-device \
              -drive file=$(DISK_IMG),if=none,format=raw,id=hd0 \
              -device virtio-blk-device,drive=hd0 \
              -netdev user,id=n0 -device virtio-net-device,netdev=n0
