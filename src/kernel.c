@@ -227,7 +227,64 @@ static window_t *win_terminal;
 static window_t *win_monitor;
 static window_t *win_about;
 static window_t *win_calc;
+static window_t *win_store;
 static widget_t *calc_display;
+
+/* ---------------- App Store ---------------- */
+
+#include "pkgmgr.h"
+
+#define STORE_MAX_ENTRIES 8
+static widget_t *store_status_lbl[STORE_MAX_ENTRIES];
+static widget_t *store_action_btn[STORE_MAX_ENTRIES];
+
+static void store_refresh_row(int idx) {
+    int installed = pkg_is_installed(idx);
+    widget_set_text(store_status_lbl[idx],
+                    installed ? "INSTALLED" : "available");
+    widget_set_text(store_action_btn[idx],
+                    installed ? "Remove" : "Install");
+}
+
+static void store_action_cb(window_t *w, widget_t *self) {
+    (void)w;
+    /* find which package this button belongs to */
+    for (int i = 0; i < STORE_MAX_ENTRIES; i++) {
+        if (store_action_btn[i] == self) {
+            if (pkg_is_installed(i)) {
+                pkg_remove_by_name(pkg_name_at(i));
+            } else {
+                pkg_install_by_name(pkg_name_at(i));
+            }
+            store_refresh_row(i);
+            return;
+        }
+    }
+}
+
+static void build_store_window(void) {
+    int n = pkg_count();
+    if (n > STORE_MAX_ENTRIES) n = STORE_MAX_ENTRIES;
+
+    const int row_h = 24;
+    int win_w = 480;
+    int win_h = 22 + n * row_h + 8;
+
+    win_store = window_create_widget("App Store", 16, 300, win_w, win_h);
+
+    window_add_label(win_store, 10, 4, win_w - 20,
+                     "Install / remove built-in packages");
+
+    for (int i = 0; i < n; i++) {
+        int row_y = 22 + i * row_h;
+        window_add_label (win_store,  10, row_y,  72, pkg_name_at(i));
+        window_add_label (win_store,  82, row_y, 240, pkg_summary_at(i));
+        store_status_lbl[i] = window_add_label (win_store, 322, row_y,  80, "");
+        store_action_btn[i] = window_add_button(win_store, 400, row_y - 3, 70,
+                                                "", store_action_cb);
+        store_refresh_row(i);
+    }
+}
 
 static void about_close_cb(window_t *w, widget_t *g) {
     (void)g;
@@ -480,6 +537,7 @@ void kernel_main(void) {
         window_add_button(win_about, 200, 110, 90, "Close", about_close_cb);
 
         build_calculator_window();
+        build_store_window();
     }
 #endif
 

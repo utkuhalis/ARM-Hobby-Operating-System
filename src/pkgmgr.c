@@ -13,7 +13,10 @@ static pkg_t catalog[] = {
     {"hello",   "one-shot greeting from a user task",       user_main_hello,   1},
     {"counter", "prints 1..5 with little pauses",           user_main_counter, 1},
     {"clock",   "tick-tock demo",                            user_main_clock,   0},
-    {"load",    "burn some ticks to exercise the scheduler", user_main_load,    0},
+    {"load",    "burn some ticks to exercise scheduler",    user_main_load,    0},
+    {"notepad", "tiny notes editor backed by RAM fs",       user_main_notepad, 1},
+    {"files",   "list and dump RAM filesystem contents",    user_main_files,   1},
+    {"sysinfo", "dump CPU + memory + uptime info",          user_main_sysinfo, 1},
     {0, 0, 0, 0},
 };
 

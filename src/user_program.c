@@ -106,3 +106,30 @@ void user_main_load(void) {
     sys_write("\n[load] done\n");
     sys_exit();
 }
+
+void user_main_notepad(void) {
+    sys_write("[notepad] tiny editor\n");
+    sys_write("[notepad] usage from the shell:\n");
+    sys_write("[notepad]   write notes hello there\n");
+    sys_write("[notepad]   cat notes\n");
+    sys_write("[notepad]   rm notes\n");
+    sys_write("[notepad] (a real interactive notepad needs a typed\n");
+    sys_write("[notepad]  text-input widget; that lands next.)\n");
+    sys_exit();
+}
+
+void user_main_files(void) {
+    sys_write("[files] use 'ls' for a listing, 'cat <file>' to read\n");
+    sys_write("[files] this app is a stub until the file-browser\n");
+    sys_write("[files] window lands.\n");
+    sys_exit();
+}
+
+void user_main_sysinfo(void) {
+    sys_write("[sysinfo] use the shell commands:\n");
+    sys_write("[sysinfo]   uname -a\n");
+    sys_write("[sysinfo]   cpuinfo\n");
+    sys_write("[sysinfo]   meminfo\n");
+    sys_write("[sysinfo]   uptime\n");
+    sys_exit();
+}

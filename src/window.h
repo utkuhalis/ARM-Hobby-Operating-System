@@ -18,7 +18,7 @@
 #define WIDGET_BUTTON 1
 
 #define WIDGET_TEXT_MAX 24
-#define WIN_MAX_WIDGETS 16
+#define WIN_MAX_WIDGETS 64
 
 struct window;
 
