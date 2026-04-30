@@ -41,6 +41,9 @@ int   task_resched_pending(void);
 task_t *task_current(void);
 task_t *task_first(void);
 
+/* Toggle scheduler tracing on UART (sched debug only). */
+void    task_set_trace(int on);
+
 /* Find a live task by name. Returns NULL if none match. */
 task_t *task_find_by_name(const char *name);
 

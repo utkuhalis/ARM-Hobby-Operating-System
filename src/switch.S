@@ -36,4 +36,10 @@ switch_context:
     ldp     x29, x30, [sp, #(10 * 8)]
     add     sp, sp, #(12 * 8)
 
+    /* The previous task may have entered switch_context from within an
+     * SVC trap, where the CPU masked IRQs at exception entry. Unmask
+     * here so the task we are about to resume always runs with
+     * interrupts enabled -- otherwise idle's WFI never wakes. */
+    msr     daifclr, #2
+
     ret

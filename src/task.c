@@ -154,6 +154,8 @@ static task_t *pick_next(void) {
     return NULL;
 }
 
+void task_set_trace(int on) { (void)on; }
+
 void task_yield(void) {
     task_t *prev = current;
     task_t *next = pick_next();
