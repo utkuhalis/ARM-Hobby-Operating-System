@@ -265,6 +265,18 @@ Scaffolding now in place (each one started, not all complete):
 - [~] Pi 5 GIC + UART IRQ numbers in board header (port still
       compile-out until real-hardware bring-up)
 
+Known issue, top of the follow-up list:
+
+- Driver-side virtio queue **write** path doesn't reach the device on
+  QEMU 11 + macOS aarch64. Symptom: virtio-input/tablet IRQs never
+  fire (`kbd evt: 0  irq: 0` in System Monitor) so cursor and
+  keyboard events from the QEMU window or VNC client never reach the
+  guest. Same root cause as virtio-blk save hanging at status=0xff.
+  Workaround today: drive the cursor and click from the serial-line
+  shell (`mouse right 200`, `mouse to X Y`, `mouse click`). Real fix
+  needs cache invalidation around the virtq + a virtio-input
+  capability probe (or a switch to virtio-pci transport).
+
 Open work, in rough order:
 
 - [ ] Pull AP=01 page permissions out of the 1 GiB blocks so user
