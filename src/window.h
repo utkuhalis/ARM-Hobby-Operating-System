@@ -54,6 +54,7 @@ window_t *window_create(const char *title, int x, int y);
 window_t *window_create_widget(const char *title, int x, int y, int w, int h);
 widget_t *window_add_label(window_t *w, int x, int y,
                            int width, const char *text);
+void     widget_set_text(widget_t *g, const char *text);
 widget_t *window_add_button(window_t *w, int x, int y, int width,
                             const char *text,
                             void (*on_click)(window_t *, widget_t *));

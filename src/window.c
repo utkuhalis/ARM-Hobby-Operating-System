@@ -131,6 +131,11 @@ void window_close(window_t *w) {
     w->visible = 0;
 }
 
+void widget_set_text(widget_t *g, const char *text) {
+    if (!g) return;
+    copy_widget_text(g->text, text);
+}
+
 void window_clear(window_t *w) {
     w->cur_row = 0;
     w->cur_col = 0;

@@ -225,10 +225,106 @@ static void format_uint(char *buf, uint64_t v) {
 static window_t *win_terminal;
 static window_t *win_monitor;
 static window_t *win_about;
+static window_t *win_calc;
+static widget_t *calc_display;
 
 static void about_close_cb(window_t *w, widget_t *g) {
     (void)g;
     window_close(w);
+}
+
+/* Tiny stack-machine calculator backing the on-screen buttons. */
+static long  calc_acc;
+static long  calc_pending;
+static char  calc_op = 0;
+static int   calc_after_eq;
+
+static void calc_render(void) {
+    char buf[24];
+    long v = calc_acc;
+    int neg = 0;
+    if (v < 0) { neg = 1; v = -v; }
+    char tmp[20];
+    int  n = 0;
+    if (v == 0) tmp[n++] = '0';
+    while (v > 0) { tmp[n++] = '0' + (char)(v % 10); v /= 10; }
+    int o = 0;
+    if (neg) buf[o++] = '-';
+    while (n > 0) buf[o++] = tmp[--n];
+    buf[o] = '\0';
+    widget_set_text(calc_display, buf);
+}
+
+static void calc_apply(void) {
+    if (calc_op == '+') calc_acc = calc_pending + calc_acc;
+    else if (calc_op == '-') calc_acc = calc_pending - calc_acc;
+    else if (calc_op == '*') calc_acc = calc_pending * calc_acc;
+    else if (calc_op == '/') calc_acc = (calc_acc != 0)
+                                        ? calc_pending / calc_acc
+                                        : 0;
+    calc_op = 0;
+    calc_pending = 0;
+}
+
+static void calc_digit(window_t *w, widget_t *g) {
+    (void)w;
+    int d = g->text[0] - '0';
+    if (calc_after_eq) { calc_acc = 0; calc_after_eq = 0; }
+    if (calc_acc < 100000000) {
+        calc_acc = calc_acc * 10 + d;
+    }
+    calc_render();
+}
+
+static void calc_set_op(window_t *w, widget_t *g) {
+    (void)w;
+    if (calc_op) { calc_apply(); }
+    calc_pending = calc_acc;
+    calc_acc     = 0;
+    calc_op      = g->text[0];
+    calc_after_eq = 0;
+    calc_render();
+}
+
+static void calc_eq(window_t *w, widget_t *g) {
+    (void)w; (void)g;
+    if (calc_op) calc_apply();
+    calc_after_eq = 1;
+    calc_render();
+}
+
+static void calc_clear(window_t *w, widget_t *g) {
+    (void)w; (void)g;
+    calc_acc = 0;
+    calc_pending = 0;
+    calc_op = 0;
+    calc_after_eq = 0;
+    calc_render();
+}
+
+static void build_calculator_window(void) {
+    win_calc = window_create_widget("Calculator", 600, 280, 180, 240);
+
+    calc_display = window_add_label(win_calc, 10, 10, 160, "0");
+
+    struct {
+        const char *label;
+        int x, y;
+        void (*cb)(window_t *, widget_t *);
+    } buttons[] = {
+        {"7", 10,  40, calc_digit}, {"8", 50,  40, calc_digit},
+        {"9", 90,  40, calc_digit}, {"/",130,  40, calc_set_op},
+        {"4", 10,  80, calc_digit}, {"5", 50,  80, calc_digit},
+        {"6", 90,  80, calc_digit}, {"*",130,  80, calc_set_op},
+        {"1", 10, 120, calc_digit}, {"2", 50, 120, calc_digit},
+        {"3", 90, 120, calc_digit}, {"-",130, 120, calc_set_op},
+        {"0", 10, 160, calc_digit}, {"C", 50, 160, calc_clear},
+        {"=", 90, 160, calc_eq},    {"+",130, 160, calc_set_op},
+    };
+    for (int i = 0; i < 16; i++) {
+        window_add_button(win_calc, buttons[i].x, buttons[i].y, 36,
+                          buttons[i].label, buttons[i].cb);
+    }
 }
 
 static void render_monitor_window(void) {
@@ -345,6 +441,8 @@ void kernel_main(void) {
         window_add_label (win_about, 12, 54, 280, "ramfb + virtio + Spleen 8x16");
         window_add_label (win_about, 12, 80, 280, "Click 'Close' to dismiss.");
         window_add_button(win_about, 200, 110, 90, "Close", about_close_cb);
+
+        build_calculator_window();
     }
 #endif
 
