@@ -217,6 +217,12 @@ hobby-os/
 
 ## Roadmap
 
+**v0.6 — desktop with windows, widgets and a calculator.** The
+framebuffer now hosts a real (small) desktop with multiple windows
+(Terminal, System Monitor, About, Calculator), click-to-focus,
+title-bar drag, label/button widgets and an actual on_click stack
+machine driving the calculator display.
+
 Phases delivered so far:
 
 - [x] **A** GIC v2 + ARM generic timer + PL011 RX interrupts
