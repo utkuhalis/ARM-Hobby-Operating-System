@@ -8,6 +8,10 @@ build/
 *.lst
 *.dis
 
+# Cross-compiled package binaries are deliverables, not throwaway
+# build artifacts -- ship them so 'pkg fetch' has something to serve.
+!tools/repo/packages/**/*.elf
+
 # Editor / OS
 .vscode/
 .idea/

@@ -1,17 +1,21 @@
 {
-  "schema":  1,
-  "name":    "hello",
+  "schema": 1,
+  "name": "hello",
   "version": "1.0.0",
   "summary": "one-shot greeting from a user task",
   "description": "Greets the user from EL0, prints its pid via getpid syscall, then exits cleanly.",
-  "license":      "MIT",
-  "open_source":  true,
-  "author":       "Hobby ARM OS",
-  "homepage":     "https://github.com/utkuhalis/ARM-Hobby-Operating-System",
-  "exec":         "/packages/hello/hello.elf",
-  "sha256":       "TODO-once-cross-compiled",
-  "size":         0,
-  "icon":         "/packages/hello/icon.txt",
-  "depends":      [],
-  "syscalls":     ["write", "exit", "getpid"]
+  "license": "MIT",
+  "open_source": true,
+  "author": "Hobby ARM OS",
+  "homepage": "https://github.com/utkuhalis/ARM-Hobby-Operating-System",
+  "exec": "/packages/hello/hello.elf",
+  "sha256": "6ddbf189c5987f76ab0e81911e79881a3e62a3c94f2edd1b6c6da1eb2c33dc05",
+  "size": 66808,
+  "icon": "/packages/hello/icon.txt",
+  "depends": [],
+  "syscalls": [
+    "write",
+    "exit",
+    "getpid"
+  ]
 }

@@ -48,7 +48,7 @@ else
 ALL     := $(ELF) $(IMG)
 endif
 
-.PHONY: all run clean
+.PHONY: all run clean pkg-build pkg-build-all repo-rebuild
 
 all: $(ALL) $(DISK_IMG)
 
@@ -103,3 +103,27 @@ screenshot: $(ELF)
 
 clean:
 	rm -rf build
+
+# Cross-compile a single package source under tools/repo/packages/<NAME>/source
+# into a static ELF, refresh sha256 + size in its manifest.
+#
+#   make pkg-build NAME=hello
+pkg-build:
+	@if [ -z "$(NAME)" ]; then echo "usage: make pkg-build NAME=<pkgname>"; exit 64; fi
+	tools/sdk/build_pkg.sh $(NAME)
+
+# Build every package that ships a source/ directory.
+pkg-build-all:
+	@for d in tools/repo/packages/*/source; do \
+	    name=$$(basename $$(dirname $$d)); \
+	    tools/sdk/build_pkg.sh $$name; \
+	done
+
+# Rebuild the package-repo container image and (re)launch it on
+# host port 8090. Run this after pkg-build-all so the manifests and
+# .elf files inside the container match what's on disk.
+repo-rebuild:
+	docker rm -f hobby-repo 2>/dev/null || true
+	docker build -t hobby-os-repo tools/repo
+	docker run -d --rm --name hobby-repo -p 8090:8080 hobby-os-repo
+	@echo "repo listening at http://localhost:8090"

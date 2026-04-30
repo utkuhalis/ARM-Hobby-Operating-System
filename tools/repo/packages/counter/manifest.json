@@ -1,13 +1,18 @@
 {
-  "schema":  1,
-  "name":    "counter",
+  "schema": 1,
+  "name": "counter",
   "version": "1.0.0",
   "summary": "prints 1..5 with little pauses",
   "license": "MIT",
   "open_source": true,
-  "author":      "Hobby ARM OS",
-  "exec":        "/packages/counter/counter.elf",
-  "sha256":      "TODO-once-cross-compiled",
-  "depends":     [],
-  "syscalls":    ["write", "yield", "exit"]
+  "author": "Hobby ARM OS",
+  "exec": "/packages/counter/counter.elf",
+  "sha256": "7c2122a08266b80eca44f85e475e3c53e87d1f2dad2e0c6659eb1c9882a0e8bb",
+  "depends": [],
+  "syscalls": [
+    "write",
+    "yield",
+    "exit"
+  ],
+  "size": 66672
 }

@@ -32,11 +32,29 @@ python3 serve.py
 ## Adding a package
 
 1. Pick a name and create `packages/<name>/`.
-2. Drop a `manifest.json` (see the existing ones) plus the binary
-   payload (`<name>.elf`).
+2. Drop a `manifest.json` (see the existing ones).
 3. Add an entry to `index.json` that points at the manifest.
-4. Optionally include `icon.txt` (8x8 ASCII), screenshot files, or a
+4. Either ship a prebuilt `<name>.elf` next to the manifest, or
+   cross-compile from source (preferred -- see below).
+5. Optionally include `icon.txt` (8x8 ASCII), screenshot files, or a
    signed checksum.
+
+## Cross-compiling a package from source
+
+The kernel SDK lives in `tools/sdk/`. Programs include `<hobby_sdk.h>`,
+export `int hobby_main(void)`, and link against `crt0.S` + `user.ld`.
+
+Drop the source at `packages/<name>/source/main.c` and run:
+
+```sh
+make pkg-build NAME=<name>      # one package
+make pkg-build-all              # every package with a source/ dir
+make repo-rebuild               # rebuild + relaunch the docker repo
+```
+
+`pkg-build` produces `packages/<name>/<name>.elf` and rewrites the
+`sha256` and `size` fields of `manifest.json` so the on-device
+package manager can verify what it downloaded.
 
 ## Manifest schema (v1)
 
