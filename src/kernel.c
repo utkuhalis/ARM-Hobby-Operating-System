@@ -417,9 +417,9 @@ static void ticker_thread(void *arg) {
     (void)arg;
     for (;;) {
         ticker_beats++;
-        /* Don't yield: just sleep to the next timer tick. Yielding
-         * here ends up bouncing between tasks every interrupt and
-         * starves the compositor of CPU time. */
+        /* Cooperative scheduler: we MUST yield before sleeping or
+         * the rest of the task list never runs. */
+        task_yield();
         __asm__ volatile("wfi");
     }
 }
