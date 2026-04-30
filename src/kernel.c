@@ -164,6 +164,9 @@ static void post(void) {
         console_printf("[ OK ] Block    virtio-blk @ IRQ %d  %lu sectors\n",
                        vblk_irq_number(),
                        (unsigned long)vblk_capacity_sectors());
+        if (fs_load() == 0) {
+            console_puts("                fs auto-loaded from disk\n");
+        }
     } else {
         console_puts("[ -- ] Block    no virtio-blk found\n");
     }
