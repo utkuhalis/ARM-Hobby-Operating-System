@@ -149,8 +149,10 @@ void vmouse_irq(void) {
 }
 
 int vmouse_init(void) {
-    /* second virtio-input on the bus is the mouse (first is keyboard) */
-    if (virtio_mmio_find_nth(VIRTIO_DEVICE_INPUT, 1, &dev) != 0) {
+    /* QEMU's virt machine puts virtio-tablet on the lower-numbered
+     * mmio slot than virtio-keyboard, so the first virtio-input we
+     * find is the tablet. Take index 0 here. */
+    if (virtio_mmio_find_nth(VIRTIO_DEVICE_INPUT, 0, &dev) != 0) {
         return -1;
     }
 

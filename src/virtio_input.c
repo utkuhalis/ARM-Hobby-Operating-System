@@ -215,7 +215,14 @@ static uint32_t mmio_version;
 uint32_t vinput_mmio_version(void) { return mmio_version; }
 
 int vinput_init(void) {
-    if (virtio_mmio_find(VIRTIO_DEVICE_INPUT, &dev) != 0) {
+    /*
+     * On the virt machine QEMU enumerates virtio-mmio slots from the
+     * top of the bus, so the first virtio-input we find is actually
+     * the tablet (which sends BTN_LEFT/RIGHT as EV_KEY events). The
+     * second one is the real keyboard. Pick index 1 so this driver
+     * handles keyboard scancodes only.
+     */
+    if (virtio_mmio_find_nth(VIRTIO_DEVICE_INPUT, 1, &dev) != 0) {
         return -1;
     }
 
