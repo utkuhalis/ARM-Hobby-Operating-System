@@ -11,6 +11,7 @@
 #include "elf.h"
 #include "sha256.h"
 #include "task.h"
+#include "desktop.h"
 #endif
 
 /*
@@ -316,6 +317,7 @@ int pkg_install_by_name(const char *name) {
 
     console_printf("  installed %s (%u bytes, entry 0x%lx)\n",
                    name, expected_size, (unsigned long)img.entry);
+    desktop_rebuild_dock();
     return 0;
 }
 
@@ -332,6 +334,7 @@ int pkg_remove_by_name(const char *name) {
         return -3;
     }
     console_printf("removed %s\n", name);
+    desktop_rebuild_dock();
     return 0;
 }
 

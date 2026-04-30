@@ -3,6 +3,7 @@
 #include "fb.h"
 #include "fb_console.h"
 #include "str.h"
+#include "desktop.h"
 
 #ifdef BOARD_HAS_GIC
 #include "virtio_mouse.h"
@@ -302,6 +303,13 @@ int window_handle_keyboard(char c) {
 }
 
 void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
+    /* Top bar / dock get first crack: if a dock click hits, no
+     * window underneath should also receive it. */
+    if (desktop_handle_pointer(mx, my, buttons, prev_buttons)) {
+        prev_buttons = buttons;
+        return;
+    }
+
     int left_now  = (buttons & 1) != 0;
     int left_prev = (prev_buttons & 1) != 0;
     int press     = left_now && !left_prev;
@@ -505,6 +513,10 @@ void window_compose(void) {
     if (focus >= 0 && focus < window_n) {
         paint_window(&windows[focus]);
     }
+
+    /* Top bar + dock paint last so they sit on top of any window
+     * the user dragged into their strips. */
+    desktop_paint_chrome();
 
 #ifdef BOARD_HAS_GIC
     if (vmouse_present()) {

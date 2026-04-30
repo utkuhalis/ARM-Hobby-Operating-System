@@ -9,6 +9,7 @@
 #include "pkgmgr.h"
 #ifdef BOARD_HAS_GIC
 #include "pkgstore.h"
+#include "desktop.h"
 #include "exceptions.h"
 #include "gic.h"
 #include "timer.h"
@@ -169,6 +170,7 @@ static void post(void) {
             console_puts("                fs auto-loaded from disk\n");
         }
         pkgstore_init();
+        desktop_rebuild_dock();
         int installed = 0;
         for (int i = 0; i < pkg_count(); i++) {
             if (pkg_is_installed(i)) installed++;
@@ -585,9 +587,10 @@ void kernel_main(void) {
     if (fb_init() == 0) {
         fb_console_init(BG_COLOR, FG_COLOR);
         window_init();
-        win_terminal = window_create("Terminal", 16, 16);
+        desktop_init();
+        win_terminal = window_create("Terminal", 16, 16 + 22);
         win_monitor  = window_create("System Monitor",
-                                     16 + win_terminal->w + 16, 16);
+                                     16 + win_terminal->w + 16, 16 + 22);
 
         /* About window: a real widget-based dialog with labels + a button */
         win_about = window_create_widget(
