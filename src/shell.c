@@ -16,6 +16,7 @@
 #include "user_program.h"
 #include "virtio_net.h"
 #include "virtio_mouse.h"
+#include "net.h"
 #endif
 
 #define LINE_MAX  256
@@ -289,10 +290,16 @@ static void cmd_ifconfig(int argc, char **argv) {
         return;
     }
     const uint8_t *m = vnet_mac();
+    uint32_t ip = net_my_ipv4();
     console_printf("eth0: virtio-net  IRQ %d\n", vnet_irq_number());
     console_printf("      hwaddr %02x:%02x:%02x:%02x:%02x:%02x\n",
                    m[0], m[1], m[2], m[3], m[4], m[5]);
-    console_puts("      ip     (no IP stack yet)\n");
+    console_printf("      inet   %u.%u.%u.%u\n",
+                   (ip >> 24) & 0xff, (ip >> 16) & 0xff,
+                   (ip >>  8) & 0xff,  ip        & 0xff);
+    console_printf("      rx %lu  tx %lu  arp-replies %lu  icmp-replies %lu\n",
+                   vnet_rx_count(), vnet_tx_count(),
+                   net_arp_replies(), net_icmp_replies());
 }
 
 static void cmd_run(int argc, char **argv) {

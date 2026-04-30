@@ -7,6 +7,7 @@
 #include "virtio_input.h"
 #include "virtio_blk.h"
 #include "virtio_mouse.h"
+#include "virtio_net.h"
 
 #define IRQ_TIMER_PHYS  30
 #define IRQ_UART_PL011  33
@@ -44,6 +45,7 @@ void irq_handler(void) {
             vinput_irq();
             vmouse_irq();
             vblk_irq();
+            vnet_irq();
         }
         break;
     }
