@@ -350,6 +350,23 @@ static void render_monitor_window(void) {
     window_puts(win_monitor, buf);
     window_puts(win_monitor, "\n\n");
 
+#ifdef BOARD_HAS_GIC
+    if (vmouse_present()) {
+        int32_t mx = 0, my = 0;
+        vmouse_position(&mx, &my);
+        window_puts(win_monitor, "cursor: ");
+        format_uint(buf, (uint64_t)mx);
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, ",");
+        format_uint(buf, (uint64_t)my);
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, " btn ");
+        format_uint(buf, (uint64_t)vmouse_buttons());
+        window_puts(win_monitor, buf);
+        window_puts(win_monitor, "\n");
+    }
+#endif
+
     for (task_t *t = task_first(); t; t = t->next) {
         format_uint(buf, (uint64_t)t->id);
         window_puts(win_monitor, "  [");
