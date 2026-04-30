@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "virtio.h"
 #include "virtio_input.h"
+#include "virtio_mouse.h"
 #include "gic.h"
 
 #define MMIO_DEVICE_FEATURES_SEL 0x014
@@ -135,8 +136,30 @@ static const char keymap_upper[256] = {
     [57] = ' ',
 };
 
+/*
+ * Linux key codes used as a keyboard fallback for cursor + click,
+ * so the desktop is usable even when virtio-tablet event delivery
+ * isn't reaching us (e.g. macOS Cocoa hover quirk).
+ */
+#define KEY_ESC   1
+#define KEY_LEFT  105
+#define KEY_RIGHT 106
+#define KEY_UP    103
+#define KEY_DOWN  108
+
 static void handle_event(const struct input_event *ev) {
     if (ev->type != EV_KEY) return;
+
+    /* Cursor + click via keyboard. Process both press and release for ESC
+     * so the button-release callback fires; arrows fire only on press. */
+    switch (ev->code) {
+    case KEY_LEFT:  if (ev->value) vmouse_inject_move(-16,  0); return;
+    case KEY_RIGHT: if (ev->value) vmouse_inject_move(+16,  0); return;
+    case KEY_UP:    if (ev->value) vmouse_inject_move( 0, -16); return;
+    case KEY_DOWN:  if (ev->value) vmouse_inject_move( 0, +16); return;
+    case KEY_ESC:   vmouse_inject_button(ev->value != 0);       return;
+    default: break;
+    }
 
     /* Shifts: 42 LSHIFT, 54 RSHIFT */
     if (ev->code == 42 || ev->code == 54) {

@@ -11,4 +11,8 @@ void vmouse_irq(void);
 void vmouse_position(int32_t *x, int32_t *y);
 int  vmouse_buttons(void);
 
+/* Synthetic input from the keyboard fallback (arrow keys + Esc). */
+void vmouse_inject_move(int dx, int dy);
+void vmouse_inject_button(int left_down);
+
 #endif

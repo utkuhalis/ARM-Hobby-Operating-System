@@ -73,6 +73,20 @@ void vmouse_position(int32_t *x, int32_t *y) {
 }
 int  vmouse_buttons(void) { return buttons; }
 
+void vmouse_inject_move(int dx, int dy) {
+    cursor_x += dx;
+    cursor_y += dy;
+    if (cursor_x < 0)   cursor_x = 0;
+    if (cursor_y < 0)   cursor_y = 0;
+    if (cursor_x > 799) cursor_x = 799;
+    if (cursor_y > 599) cursor_y = 599;
+}
+
+void vmouse_inject_button(int left_down) {
+    if (left_down) buttons |=  1;
+    else           buttons &= ~1;
+}
+
 static void clamp(void) {
     if (cursor_x < 0)   cursor_x = 0;
     if (cursor_y < 0)   cursor_y = 0;
