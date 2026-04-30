@@ -5,6 +5,7 @@
 
 #ifdef BOARD_HAS_RAMFB
 #include "fb_console.h"
+#include "window.h"
 #endif
 
 #ifdef BOARD_HAS_GIC
@@ -12,18 +13,32 @@
 #include "task.h"
 #endif
 
+#ifdef BOARD_HAS_RAMFB
+static struct window *console_win;
+#endif
+
+void console_attach_window(struct window *w) {
+#ifdef BOARD_HAS_RAMFB
+    console_win = w;
+#else
+    (void)w;
+#endif
+}
+
 void console_putc(char c) {
     if (c == '\n') {
         uart_putc('\r');
         uart_putc('\n');
 #ifdef BOARD_HAS_RAMFB
-        fb_console_putc('\n');
+        if (console_win) window_putc(console_win, '\n');
+        else             fb_console_putc('\n');
 #endif
         return;
     }
     uart_putc(c);
 #ifdef BOARD_HAS_RAMFB
-    fb_console_putc(c);
+    if (console_win) window_putc(console_win, c);
+    else             fb_console_putc(c);
 #endif
 }
 

@@ -39,4 +39,8 @@ void     window_compose(void);   /* paint all windows + cursor */
 int      window_count(void);
 window_t *window_at(int idx);
 
+/* Pointer event dispatcher: call once per tick with the latest cursor
+ * state. Handles click-to-focus and title-bar dragging. */
+void     window_handle_pointer(int32_t mx, int32_t my, int buttons);
+
 #endif

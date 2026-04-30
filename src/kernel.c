@@ -264,6 +264,11 @@ static void status_thread(void *arg) {
         ticker_beats++;
         render_monitor_window();
 #ifdef BOARD_HAS_RAMFB
+        if (vmouse_present()) {
+            int32_t mx = 0, my = 0;
+            vmouse_position(&mx, &my);
+            window_handle_pointer(mx, my, vmouse_buttons());
+        }
         window_compose();
 #endif
         for (int i = 0; i < 5; i++) task_yield();
@@ -324,11 +329,6 @@ void kernel_main(void) {
         win_terminal = window_create("Terminal", 16, 16);
         win_monitor  = window_create("System Monitor",
                                      16 + win_terminal->w + 16, 16);
-        window_puts(win_terminal,
-                    "Hobby ARM OS shell\n"
-                    "(serial input still goes to UART)\n"
-                    "\n"
-                    "type 'help' over the serial line\n");
     }
 #endif
 
@@ -339,6 +339,19 @@ void kernel_main(void) {
 #endif
 
     post();
+
+#ifdef BOARD_HAS_RAMFB
+    /* once boot is done, redirect console output into the Terminal
+     * window so the shell prompt and user output land there instead
+     * of dribbling out to the framebuffer-text console (which the
+     * compositor wipes every refresh anyway). */
+    if (win_terminal) {
+        window_clear(win_terminal);
+        console_attach_window(win_terminal);
+        console_puts("Hobby ARM OS\n");
+        console_puts("type 'help' for commands\n\n");
+    }
+#endif
 
 #ifdef BOARD_HAS_GIC
     task_spawn("idle",   idle_thread,   NULL);

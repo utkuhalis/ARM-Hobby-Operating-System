@@ -14,6 +14,13 @@ static window_t windows[MAX_WINDOWS];
 static int      window_n;
 static int      focus_idx = -1;
 
+/* Pointer state for click-to-focus + drag */
+static int  prev_buttons;
+static int  drag_active;
+static int  drag_window;
+static int  drag_off_x;
+static int  drag_off_y;
+
 #define DESKTOP_BG  0x000a0e18u
 #define WIN_BG      0x00121826u
 #define WIN_FG      0x00d0d6e0u
@@ -139,6 +146,66 @@ int window_count(void) { return window_n; }
 window_t *window_at(int idx) {
     if (idx < 0 || idx >= window_n) return NULL;
     return &windows[idx];
+}
+
+static int point_in_window(window_t *w, int x, int y) {
+    return x >= w->x && x < w->x + w->w &&
+           y >= w->y && y < w->y + w->h;
+}
+
+static int point_in_titlebar(window_t *w, int x, int y) {
+    return x >= w->x && x < w->x + w->w &&
+           y >= w->y && y < w->y + WIN_TITLE_H;
+}
+
+void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
+    int left_now  = (buttons & 1) != 0;
+    int left_prev = (prev_buttons & 1) != 0;
+    int press     = left_now && !left_prev;
+    int release   = !left_now && left_prev;
+
+    if (press) {
+        /* topmost window under the cursor wins (focused first, then later) */
+        int hit = -1;
+        if (focus_idx >= 0 && focus_idx < window_n &&
+            point_in_window(&windows[focus_idx], (int)mx, (int)my)) {
+            hit = focus_idx;
+        } else {
+            for (int i = window_n - 1; i >= 0; i--) {
+                if (point_in_window(&windows[i], (int)mx, (int)my)) {
+                    hit = i;
+                    break;
+                }
+            }
+        }
+        if (hit >= 0) {
+            window_set_focus(&windows[hit]);
+            if (point_in_titlebar(&windows[hit], (int)mx, (int)my)) {
+                drag_active = 1;
+                drag_window = hit;
+                drag_off_x  = (int)mx - windows[hit].x;
+                drag_off_y  = (int)my - windows[hit].y;
+            }
+        }
+    }
+
+    if (drag_active && left_now &&
+        drag_window >= 0 && drag_window < window_n) {
+        int new_x = (int)mx - drag_off_x;
+        int new_y = (int)my - drag_off_y;
+        /* clamp inside the framebuffer */
+        if (new_x < 0) new_x = 0;
+        if (new_y < 0) new_y = 0;
+        windows[drag_window].x = new_x;
+        windows[drag_window].y = new_y;
+    }
+
+    if (release) {
+        drag_active = 0;
+        drag_window = -1;
+    }
+
+    prev_buttons = buttons;
 }
 
 static void paint_window(window_t *w) {
