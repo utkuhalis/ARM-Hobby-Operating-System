@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-#define FB_WIDTH   800
-#define FB_HEIGHT  600
+#define FB_WIDTH   1920
+#define FB_HEIGHT  1080
 
 int  fb_init(void);
 

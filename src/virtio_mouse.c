@@ -2,6 +2,7 @@
 #include "virtio.h"
 #include "virtio_mouse.h"
 #include "gic.h"
+#include "fb.h"
 
 #define MMIO_DEVICE_FEATURES_SEL 0x014
 #define MMIO_DRIVER_FEATURES     0x020
@@ -42,7 +43,7 @@
 #define BTN_RIGHT 0x111
 
 /* virtio-tablet defaults to a 0..32767 absolute coordinate range.
- * Map that into our 800x600 framebuffer. */
+ * Map that into our framebuffer dimensions (FB_WIDTH x FB_HEIGHT). */
 #define TABLET_RANGE 32767
 
 struct virtq_desc { uint64_t addr; uint32_t len; uint16_t flags; uint16_t next; };
@@ -93,10 +94,10 @@ void vmouse_inject_button(int left_down) {
 }
 
 static void clamp(void) {
-    if (cursor_x < 0)   cursor_x = 0;
-    if (cursor_y < 0)   cursor_y = 0;
-    if (cursor_x > 799) cursor_x = 799;
-    if (cursor_y > 599) cursor_y = 599;
+    if (cursor_x < 0)              cursor_x = 0;
+    if (cursor_y < 0)              cursor_y = 0;
+    if (cursor_x > FB_WIDTH  - 1)  cursor_x = FB_WIDTH  - 1;
+    if (cursor_y > FB_HEIGHT - 1)  cursor_y = FB_HEIGHT - 1;
 }
 
 static void handle_event(const struct input_event *ev) {
@@ -107,9 +108,9 @@ static void handle_event(const struct input_event *ev) {
     } else if (ev->type == EV_ABS) {
         /* virtio-tablet: ev->value is in [0..TABLET_RANGE]; rescale */
         if (ev->code == ABS_X) {
-            cursor_x = ((int64_t)ev->value * 800)  / TABLET_RANGE;
+            cursor_x = ((int64_t)ev->value * FB_WIDTH)  / TABLET_RANGE;
         } else if (ev->code == ABS_Y) {
-            cursor_y = ((int64_t)ev->value * 600) / TABLET_RANGE;
+            cursor_y = ((int64_t)ev->value * FB_HEIGHT) / TABLET_RANGE;
         }
         clamp();
     } else if (ev->type == EV_KEY) {

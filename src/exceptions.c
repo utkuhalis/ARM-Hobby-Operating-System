@@ -8,6 +8,7 @@
 #include "virtio_blk.h"
 #include "virtio_mouse.h"
 #include "virtio_net.h"
+#include "panic.h"
 
 #define IRQ_TIMER_PHYS  30
 #define IRQ_UART_PL011  33
@@ -54,8 +55,11 @@ void irq_handler(void) {
 }
 
 void panic_unhandled(void) {
-    console_puts("\n!! UNHANDLED EXCEPTION - halted !!\n");
-    for (;;) {
-        __asm__ volatile("wfi");
-    }
+    /* Vector dispatch lands here for any exception class we never
+     * wired up (FIQ, SError, AArch32 traps, etc). Jump into the
+     * graphical panic modal instead of just halting. */
+    uint64_t esr, elr;
+    __asm__ volatile("mrs %0, esr_el1" : "=r"(esr));
+    __asm__ volatile("mrs %0, elr_el1" : "=r"(elr));
+    panic_show("unhandled exception (no handler wired)", esr, elr);
 }

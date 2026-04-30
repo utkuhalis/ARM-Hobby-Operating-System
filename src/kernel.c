@@ -121,7 +121,8 @@ static void post(void) {
 
     delay_ms(150);
 #ifdef BOARD_HAS_RAMFB
-    console_puts("[ OK ] Display  ramfb 800x600 XRGB8888\n");
+    console_printf("[ OK ] Display  ramfb %ux%u XRGB8888\n",
+                   (unsigned)FB_WIDTH, (unsigned)FB_HEIGHT);
 #else
     console_puts("[ -- ] Display  serial only\n");
 #endif

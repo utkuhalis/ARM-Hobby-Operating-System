@@ -55,6 +55,7 @@ static void cmd_logout(int argc, char **argv);
 static void cmd_users(int argc, char **argv);
 static void cmd_pkg(int argc, char **argv);
 static void cmd_elfinfo(int argc, char **argv);
+static void cmd_crashtest(int argc, char **argv);
 #ifdef BOARD_HAS_GIC
 static void cmd_mouse(int argc, char **argv);
 #endif
@@ -92,6 +93,7 @@ static const struct cmd cmds[] = {
     {"users",   cmd_users,   "list known accounts"},
     {"pkg",     cmd_pkg,     "package manager (list/install/remove/fetch)"},
     {"elfinfo", cmd_elfinfo, "inspect an ELF file in the RAM filesystem"},
+    {"crashtest", cmd_crashtest, "trigger a crash modal (debug)"},
 #ifdef BOARD_HAS_GIC
     {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
 #endif
@@ -518,6 +520,16 @@ static void cmd_elfinfo(int argc, char **argv) {
     console_printf("  vaddr range  0x%lx .. 0x%lx\n",
                    img.lowest_va, img.highest_va);
     console_printf("  file size  %u bytes\n", f->size);
+}
+
+static void cmd_crashtest(int argc, char **argv) {
+    (void)argc; (void)argv;
+    console_puts("crashtest: triggering a deliberate fault...\n");
+    /* Dereference an unmapped high address. The data abort will land
+     * in sync_handler, which now hands off to panic_show. */
+    volatile uint64_t *bad = (volatile uint64_t *)0xdead000000000000ull;
+    (void)*bad;
+    console_puts("crashtest: huh, no fault\n");
 }
 
 static void cmd_halt(int argc, char **argv) {

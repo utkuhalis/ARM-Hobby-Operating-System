@@ -2,6 +2,7 @@
 #include "syscall.h"
 #include "console.h"
 #include "task.h"
+#include "panic.h"
 
 static uint64_t do_write(const char *s) {
     if (!s) return (uint64_t)-1;
@@ -15,9 +16,16 @@ void sync_handler(struct trapframe *tf) {
     uint32_t ec = (uint32_t)(esr >> 26);
 
     if (ec != 0x15) {
-        console_printf("\n!! unhandled sync exception, ESR_EL1=0x%lx ELR=0x%lx !!\n",
-                       esr, tf->elr_el1);
-        for (;;) __asm__ volatile("wfi");
+        const char *what;
+        switch (ec) {
+        case 0x20: case 0x21: what = "instruction abort"; break;
+        case 0x24: case 0x25: what = "data abort";        break;
+        case 0x26:            what = "stack alignment fault"; break;
+        case 0x2c:            what = "FP/SIMD trap";      break;
+        case 0x3c:            what = "BRK debug breakpoint"; break;
+        default:              what = "synchronous exception"; break;
+        }
+        panic_show(what, esr, tf->elr_el1);
     }
 
     uint64_t num = tf->x[8];

@@ -20,7 +20,7 @@ LDFLAGS := -nostdlib -nostartfiles -Wl,-T,linker/$(BOARD).ld -Wl,--build-id=none
 CORE_C  := $(SRC)/kernel.c $(SRC)/uart.c $(SRC)/str.c $(SRC)/console.c \
            $(SRC)/shell.c $(SRC)/fs.c $(SRC)/sysinfo.c $(SRC)/psci.c \
            $(SRC)/heap.c $(SRC)/accounts.c $(SRC)/pkgmgr.c $(SRC)/elf.c \
-           $(SRC)/sha256.c
+           $(SRC)/sha256.c $(SRC)/panic.c
 
 ifeq ($(BOARD),qemu-virt)
 C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
