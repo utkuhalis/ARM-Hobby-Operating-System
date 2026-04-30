@@ -4,20 +4,30 @@
 
 typedef struct {
     const char *name;
+    const char *version;
     const char *summary;
+    const char *license;
+    int         open_source;
     void      (*entry)(void);
-    int        installed;
+    int         installed;
 } pkg_t;
 
 static pkg_t catalog[] = {
-    {"hello",   "one-shot greeting from a user task",       user_main_hello,   1},
-    {"counter", "prints 1..5 with little pauses",           user_main_counter, 1},
-    {"clock",   "tick-tock demo",                            user_main_clock,   0},
-    {"load",    "burn some ticks to exercise scheduler",    user_main_load,    0},
-    {"notepad", "tiny notes editor backed by RAM fs",       user_main_notepad, 1},
-    {"files",   "list and dump RAM filesystem contents",    user_main_files,   1},
-    {"sysinfo", "dump CPU + memory + uptime info",          user_main_sysinfo, 1},
-    {0, 0, 0, 0},
+    {"hello",   "1.0.0", "one-shot greeting from a user task",
+                "MIT",          1, user_main_hello,   1},
+    {"counter", "1.0.0", "prints 1..5 with little pauses",
+                "MIT",          1, user_main_counter, 1},
+    {"clock",   "1.0.0", "tick-tock demo",
+                "MIT",          1, user_main_clock,   0},
+    {"load",    "1.0.0", "burn some ticks to exercise scheduler",
+                "MIT",          1, user_main_load,    0},
+    {"notepad", "0.1.0", "tiny notes editor backed by RAM fs",
+                "MIT",          1, user_main_notepad, 1},
+    {"files",   "0.1.0", "list and dump RAM filesystem contents",
+                "MIT",          1, user_main_files,   1},
+    {"sysinfo", "0.1.0", "dump CPU + memory + uptime info",
+                "MIT",          1, user_main_sysinfo, 1},
+    {0, 0, 0, 0, 0, 0, 0},
 };
 
 void pkg_init(void) {
@@ -40,6 +50,21 @@ const char *pkg_name_at(int idx) {
 const char *pkg_summary_at(int idx) {
     if (idx < 0 || idx >= catalog_size()) return 0;
     return catalog[idx].summary;
+}
+
+const char *pkg_version_at(int idx) {
+    if (idx < 0 || idx >= catalog_size()) return 0;
+    return catalog[idx].version;
+}
+
+const char *pkg_license_at(int idx) {
+    if (idx < 0 || idx >= catalog_size()) return 0;
+    return catalog[idx].license;
+}
+
+int pkg_open_source_at(int idx) {
+    if (idx < 0 || idx >= catalog_size()) return 0;
+    return catalog[idx].open_source;
 }
 
 int pkg_is_installed(int idx) {

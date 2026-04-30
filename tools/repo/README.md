@@ -9,15 +9,18 @@ fetch `index.json` here, then download individual `manifest.json` +
 
 ```sh
 docker build -t hobby-os-repo tools/repo
-docker run --rm -p 8080:8080 hobby-os-repo
+docker run --rm -p 8090:8080 hobby-os-repo
 ```
 
 Then in another terminal:
 
 ```sh
-curl http://localhost:8080/index.json
-curl http://localhost:8080/packages/hello/manifest.json
+curl http://localhost:8090/index.json
+curl http://localhost:8090/packages/hello/manifest.json
 ```
+
+(macOS often has Apache on :8080 already; mapping to 8090 avoids
+the conflict. Inside the container the server still listens on 8080.)
 
 ## Run without Docker (Python only)
 

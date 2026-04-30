@@ -370,10 +370,13 @@ static void cmd_pkg(int argc, char **argv) {
     }
     if (strcmp(argv[1], "list") == 0) {
         int n = pkg_count();
-        console_printf("  %-10s %-10s %s\n", "name", "state", "summary");
+        console_printf("  %-10s %-7s %-10s %-10s %s\n",
+                       "name", "ver", "license", "state", "summary");
         for (int i = 0; i < n; i++) {
-            console_printf("  %-10s %-10s %s\n",
+            console_printf("  %-10s %-7s %-10s %-10s %s\n",
                            pkg_name_at(i),
+                           pkg_version_at(i),
+                           pkg_license_at(i),
                            pkg_is_installed(i) ? "installed" : "available",
                            pkg_summary_at(i));
         }

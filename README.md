@@ -202,8 +202,8 @@ HTTP-served catalogue with one manifest per package:
 
 ```sh
 docker build -t hobby-os-repo tools/repo
-docker run --rm -p 8080:8080 hobby-os-repo
-curl http://localhost:8080/index.json
+docker run --rm -p 8090:8080 hobby-os-repo
+curl http://localhost:8090/index.json
 ```
 
 Each package is a directory under `tools/repo/packages/<name>/`
