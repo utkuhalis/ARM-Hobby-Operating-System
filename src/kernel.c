@@ -685,7 +685,10 @@ static void build_calendar_window(void) {
 
 static void show_window(window_t *w) {
     if (!w) return;
-    w->visible = 1;
+    /* window_restore re-grows from the minimize/close animation
+     * state and sets visible. Use it for both fresh-launch and
+     * restoring-from-minimize so the dock click always animates. */
+    window_restore(w);
     window_set_focus(w);
 }
 

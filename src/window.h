@@ -55,6 +55,13 @@ typedef struct window {
     /* widget tree (used when kind == WIN_KIND_WIDGET) */
     widget_t widgets[WIN_MAX_WIDGETS];
     int      widget_count;
+    /* Minimize / open / close animation state.
+     * anim_t advances toward anim_target each compose frame; the
+     * window is rendered scaled around its center by anim_t/256. */
+    int      anim_t;
+    int      anim_target;
+    int      minimized;     /* visible == 0 but should restore later */
+    int      closing;       /* anim_target == 0 and meant to disappear */
 } window_t;
 
 void     window_init(void);
@@ -72,6 +79,8 @@ widget_t *window_add_text_input(window_t *w, int x, int y, int width,
 const char *widget_input_text(widget_t *g);
 void        widget_input_clear(widget_t *g);
 void     window_close(window_t *w);
+void     window_minimize(window_t *w);
+void     window_restore (window_t *w);   /* called by launch_*  */
 void     window_clear(window_t *w);
 void     window_putc(window_t *w, char c);
 void     window_puts(window_t *w, const char *s);

@@ -65,6 +65,10 @@ window_t *window_create(const char *title, int x, int y) {
     w->cur_row = 0;
     w->cur_col = 0;
     w->widget_count = 0;
+    w->anim_t      = 32;       /* start small, grow into place */
+    w->anim_target = 256;
+    w->minimized   = 0;
+    w->closing     = 0;
     for (int r = 0; r < WIN_ROWS; r++)
         for (int c = 0; c < WIN_COLS; c++)
             w->text[r][c] = ' ';
@@ -89,6 +93,10 @@ window_t *window_create_widget(const char *title, int x, int y, int w, int h) {
     win->fg      = WIN_FG;
     win->accent  = WIN_ACCENT;
     win->widget_count = 0;
+    win->anim_t      = 32;
+    win->anim_target = 256;
+    win->minimized   = 0;
+    win->closing     = 0;
     if (focus_idx < 0) focus_idx = window_n;
     window_n++;
     return win;
@@ -157,7 +165,28 @@ void widget_input_clear(widget_t *g) {
 
 void window_close(window_t *w) {
     if (!w) return;
-    w->visible = 0;
+    /* Begin the close animation: shrink toward 0; window_compose
+     * finalizes visible=0 once anim_t reaches the target. */
+    w->closing     = 1;
+    w->anim_target = 0;
+}
+
+void window_minimize(window_t *w) {
+    if (!w) return;
+    /* Same shrinking animation as close, but flagged minimized so
+     * window_restore can re-grow it back into place. */
+    w->closing     = 0;
+    w->minimized   = 1;
+    w->anim_target = 0;
+}
+
+void window_restore(window_t *w) {
+    if (!w) return;
+    w->minimized   = 0;
+    w->closing     = 0;
+    w->visible     = 1;
+    w->anim_target = 256;
+    if (w->anim_t == 0) w->anim_t = 32;  /* a touch of pop-in */
 }
 
 void widget_set_text(widget_t *g, const char *text) {
@@ -261,6 +290,14 @@ static int point_in_close_button(window_t *w, int x, int y) {
            y >= button_y && y < button_y + button_size;
 }
 
+static int point_in_minimize_button(window_t *w, int x, int y) {
+    int button_size = WIN_TITLE_H - 2 * WIN_BORDER;
+    int button_x = w->x + w->w - WIN_BORDER - 2 * button_size - 2;
+    int button_y = w->y + WIN_BORDER;
+    return x >= button_x && x < button_x + button_size &&
+           y >= button_y && y < button_y + button_size;
+}
+
 static widget_t *widget_at(window_t *w, int gx, int gy) {
     if (w->kind != WIN_KIND_WIDGET) return NULL;
     int local_x = gx - w->x - WIN_BORDER;
@@ -341,9 +378,12 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
         }
         if (hit >= 0) {
             window_set_focus(&windows[hit]);
-            /* Check for close button click first */
+            /* Check for close / minimize button click first */
             if (point_in_close_button(&windows[hit], (int)mx, (int)my)) {
                 window_close(&windows[hit]);
+                clear_text_input_focus();
+            } else if (point_in_minimize_button(&windows[hit], (int)mx, (int)my)) {
+                window_minimize(&windows[hit]);
                 clear_text_input_focus();
             } else {
                 widget_t *g = widget_at(&windows[hit], (int)mx, (int)my);
@@ -476,6 +516,34 @@ static void draw_widget(window_t *w, widget_t *g) {
 static void paint_window(window_t *w) {
     if (!w->visible) return;
 
+    /* During open / minimize / close animations the window renders
+     * at a fraction of its real size, scaled around the center. */
+    int t = w->anim_t;
+    if (t < 16) return;       /* basically gone -- skip drawing */
+    if (t < 256) {
+        int real_x = w->x, real_y = w->y, real_w = w->w, real_h = w->h;
+        int scaled_w = real_w * t / 256;
+        int scaled_h = real_h * t / 256;
+        int scaled_x = real_x + (real_w - scaled_w) / 2;
+        int scaled_y = real_y + (real_h - scaled_h) / 2;
+
+        /* Just stroke a card outline + accent fill so the user sees
+         * the animation without us trying to render every widget at
+         * a non-integer scale. */
+        fb_fill_rect((uint32_t)scaled_x, (uint32_t)scaled_y,
+                     (uint32_t)scaled_w, (uint32_t)scaled_h,
+                     w->focused ? WIN_ACCENT_FOCUS : w->accent);
+        fb_fill_rect((uint32_t)scaled_x, (uint32_t)scaled_y,
+                     (uint32_t)scaled_w, 1, WIN_BORDER_C);
+        fb_fill_rect((uint32_t)scaled_x, (uint32_t)(scaled_y + scaled_h - 1),
+                     (uint32_t)scaled_w, 1, WIN_BORDER_C);
+        fb_fill_rect((uint32_t)scaled_x, (uint32_t)scaled_y, 1,
+                     (uint32_t)scaled_h, WIN_BORDER_C);
+        fb_fill_rect((uint32_t)(scaled_x + scaled_w - 1), (uint32_t)scaled_y,
+                     1, (uint32_t)scaled_h, WIN_BORDER_C);
+        return;
+    }
+
     /* Border + frame */
     fb_fill_rect(w->x, w->y, w->w, w->h, WIN_BORDER_C);
     /* Title bar */
@@ -502,10 +570,15 @@ static void paint_window(window_t *w) {
     uint32_t button_bg = 0x00303a4eu;
     uint32_t button_fg = 0x00d0d6e0u;
     fb_fill_rect(button_x, button_y, button_size, button_size, button_bg);
-    /* X character centered in button */
     int bx = button_x + (button_size - WIN_CHAR_W) / 2;
     int by = button_y + (button_size - 16) / 2;
     fb_draw_glyph16((uint32_t)bx, (uint32_t)by, 'X', button_fg);
+
+    /* Minimize button (left of close) */
+    int min_x = w->x + w->w - WIN_BORDER - 2 * button_size - 2;
+    fb_fill_rect(min_x, button_y, button_size, button_size, button_bg);
+    fb_draw_glyph16((uint32_t)(min_x + (button_size - WIN_CHAR_W) / 2),
+                    (uint32_t)by, '_', button_fg);
     /* Content background */
     int cx = w->x + WIN_BORDER;
     int cy = w->y + WIN_TITLE_H;
@@ -534,6 +607,30 @@ static void paint_window(window_t *w) {
 
 void window_compose(void) {
     fb_clear(DESKTOP_BG);
+
+    /* Step every window's open/close/minimize animation one tick
+     * before painting so motion is visible across frames. */
+    for (int i = 0; i < window_n; i++) {
+        window_t *w = &windows[i];
+        if (!w->visible) continue;
+        if (w->anim_t < w->anim_target) {
+            w->anim_t += 32;
+            if (w->anim_t > w->anim_target) w->anim_t = w->anim_target;
+        } else if (w->anim_t > w->anim_target) {
+            w->anim_t -= 32;
+            if (w->anim_t < w->anim_target) w->anim_t = w->anim_target;
+            if (w->anim_t == 0) {
+                /* shrink finished -- finalize state */
+                w->visible = 0;
+                if (!w->minimized) {
+                    /* a real close: leave visible=0 with anim_t=0 so
+                     * the slot can be reused. minimized is preserved
+                     * if set so window_restore can re-open. */
+                    w->closing = 0;
+                }
+            }
+        }
+    }
 
     /* Paint windows back-to-front so the focused one ends up on top */
     int focus = focus_idx;
