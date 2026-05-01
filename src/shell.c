@@ -19,6 +19,9 @@
 #include "net.h"
 #include "http.h"
 #endif
+#ifdef BOARD_HAS_RAMFB
+#include "wallpaper.h"
+#endif
 
 #define LINE_MAX  256
 #define ARGV_MAX  16
@@ -56,6 +59,9 @@ static void cmd_users(int argc, char **argv);
 static void cmd_pkg(int argc, char **argv);
 static void cmd_elfinfo(int argc, char **argv);
 static void cmd_crashtest(int argc, char **argv);
+#ifdef BOARD_HAS_RAMFB
+static void cmd_wallpaper(int argc, char **argv);
+#endif
 #ifdef BOARD_HAS_GIC
 static void cmd_mouse(int argc, char **argv);
 #endif
@@ -94,6 +100,9 @@ static const struct cmd cmds[] = {
     {"pkg",     cmd_pkg,     "package manager (list/install/remove/fetch)"},
     {"elfinfo", cmd_elfinfo, "inspect an ELF file in the RAM filesystem"},
     {"crashtest", cmd_crashtest, "trigger a crash modal (debug)"},
+#ifdef BOARD_HAS_RAMFB
+    {"wallpaper", cmd_wallpaper, "wallpaper list | set <N>"},
+#endif
 #ifdef BOARD_HAS_GIC
     {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
 #endif
@@ -531,6 +540,37 @@ static void cmd_crashtest(int argc, char **argv) {
     (void)*bad;
     console_puts("crashtest: huh, no fault\n");
 }
+
+#ifdef BOARD_HAS_RAMFB
+static void cmd_wallpaper(int argc, char **argv) {
+    if (argc < 2) {
+        console_puts("usage: wallpaper list | set <N>\n");
+        return;
+    }
+    if (strcmp(argv[1], "list") == 0) {
+        int n = wallpaper_count();
+        int cur = wallpaper_get();
+        for (int i = 0; i < n; i++) {
+            console_printf("  %s%d  %s\n",
+                           i == cur ? "*" : " ", i, wallpaper_name(i));
+        }
+        return;
+    }
+    if (strcmp(argv[1], "set") == 0 && argc >= 3) {
+        int v = 0;
+        for (const char *p = argv[2]; *p >= '0' && *p <= '9'; p++)
+            v = v * 10 + (*p - '0');
+        if (wallpaper_set(v) != 0) {
+            console_printf("wallpaper: %d out of range (0..%d)\n",
+                           v, wallpaper_count() - 1);
+            return;
+        }
+        console_printf("wallpaper set to %d (%s)\n", v, wallpaper_name(v));
+        return;
+    }
+    console_puts("usage: wallpaper list | set <N>\n");
+}
+#endif
 
 static void cmd_halt(int argc, char **argv) {
     (void)argc; (void)argv;

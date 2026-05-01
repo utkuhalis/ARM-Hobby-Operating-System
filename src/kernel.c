@@ -28,6 +28,7 @@
 #include "window.h"
 #include "login.h"
 #include "boot_splash.h"
+#include "wallpaper.h"
 #endif
 
 extern uint8_t _kernel_start[];
@@ -217,6 +218,8 @@ static void post(void) {
          * subsequent fs_write / fs_delete flushes to virtio-blk. */
         (void)fs_save();
         fs_set_autosave(1);
+        /* Pick up the user's last wallpaper choice, if any. */
+        wallpaper_load();
     } else {
         console_puts("[ -- ] Block    no virtio-blk found\n");
     }

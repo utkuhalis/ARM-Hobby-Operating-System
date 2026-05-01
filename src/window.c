@@ -4,6 +4,7 @@
 #include "fb_console.h"
 #include "str.h"
 #include "desktop.h"
+#include "wallpaper.h"
 
 #ifdef BOARD_HAS_GIC
 #include "virtio_mouse.h"
@@ -606,7 +607,7 @@ static void paint_window(window_t *w) {
 }
 
 void window_compose(void) {
-    fb_clear(DESKTOP_BG);
+    wallpaper_paint();
 
     /* Step every window's open/close/minimize animation one tick
      * before painting so motion is visible across frames. */
