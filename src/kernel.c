@@ -1047,19 +1047,46 @@ static void render_settings_window(void) {
     }
 }
 
-extern int gui_is_taken(void);
+extern int     gui_is_taken(void);
+extern task_t *gui_owner(void);
+extern void    gui_clear(void);
+extern int     gui_close_x(void);
+extern int     gui_close_y(void);
+extern int     gui_close_w(void);
+extern int     gui_close_h(void);
 
 static void status_thread(void *arg) {
     (void)arg;
+    int prev_gui_btn = 0;
     for (;;) {
         ticker_beats++;
         if (gui_is_taken()) {
-            /* A user-mode GUI app owns the framebuffer. Don't paint
-             * the desktop on top of it. */
+            /* A user-mode GUI app owns the framebuffer. We don't
+             * paint the desktop on top of it, but we DO watch for a
+             * click on the kernel-overlaid Close button so the user
+             * always has a way to bail out. */
+            if (vmouse_present()) {
+                int btn  = vmouse_buttons();
+                int press = (btn & 1) && !(prev_gui_btn & 1);
+                prev_gui_btn = btn;
+                if (press) {
+                    int32_t mx = 0, my = 0;
+                    vmouse_position(&mx, &my);
+                    if (mx >= gui_close_x() &&
+                        mx <  gui_close_x() + gui_close_w() &&
+                        my >= gui_close_y() &&
+                        my <  gui_close_y() + gui_close_h()) {
+                        task_t *t = gui_owner();
+                        if (t) task_kill(t);
+                        gui_clear();
+                    }
+                }
+            }
             task_yield();
             __asm__ volatile("wfi");
             continue;
         }
+        prev_gui_btn = 0;
         render_monitor_window();
         render_tasks_window();
         render_disks_window();

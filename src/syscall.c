@@ -14,6 +14,40 @@
 volatile int gui_taken;
 int gui_is_taken(void) { return gui_taken; }
 
+/* Owning task pointer + click-area for the kernel-painted close
+ * button. The compositor and the input dispatcher consult these when
+ * a fullscreen GUI app is active. */
+static task_t *gui_owner_task;
+task_t *gui_owner(void)             { return gui_owner_task; }
+void    gui_clear(void)             { gui_taken = 0; gui_owner_task = 0; }
+
+/* Geometry of the kernel-overlaid close button, rendered each
+ * SYS_GUI_PRESENT after the user app has finished its frame. */
+#define GUI_CLOSE_W 110
+#define GUI_CLOSE_H 36
+int  gui_close_x(void)              { return FB_WIDTH - GUI_CLOSE_W - 16; }
+int  gui_close_y(void)              { return 16; }
+int  gui_close_w(void)              { return GUI_CLOSE_W; }
+int  gui_close_h(void)              { return GUI_CLOSE_H; }
+
+static void paint_close_button(void) {
+    int x = gui_close_x();
+    int y = gui_close_y();
+    int w = GUI_CLOSE_W, h = GUI_CLOSE_H;
+    fb_fill_rect((uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h, 0x00cc3737u);
+    fb_fill_rect((uint32_t)x, (uint32_t)y, (uint32_t)w, 1, 0x00141a26u);
+    fb_fill_rect((uint32_t)x, (uint32_t)(y + h - 1), (uint32_t)w, 1, 0x00141a26u);
+    fb_fill_rect((uint32_t)x, (uint32_t)y, 1, (uint32_t)h, 0x00141a26u);
+    fb_fill_rect((uint32_t)(x + w - 1), (uint32_t)y, 1, (uint32_t)h, 0x00141a26u);
+    /* "× Close" centered in smooth font */
+    const char *label = "x  Close";
+    int lw = (int)fb_text_ui_width(label);
+    int lh_text = (int)fb_text_ui_line_height();
+    fb_draw_string_ui((uint32_t)(x + (w - lw) / 2),
+                      (uint32_t)(y + (h - lh_text) / 2),
+                      label, 0x00ffffffu);
+}
+
 static uint64_t do_write(const char *s) {
     if (!s) return (uint64_t)-1;
     console_puts(s);
@@ -44,6 +78,14 @@ void sync_handler(struct trapframe *tf) {
         tf->x[0] = do_write((const char *)tf->x[0]);
         break;
     case SYS_EXIT:
+        /* If a fullscreen GUI app is exiting on its own, hand the
+         * framebuffer back to the desktop so the next compose paints
+         * the wallpaper instead of leaving the user's last frame
+         * frozen on screen. */
+        if (gui_taken && gui_owner_task == task_current()) {
+            gui_taken = 0;
+            gui_owner_task = 0;
+        }
         task_exit();
         /* unreachable */
         break;
@@ -57,11 +99,13 @@ void sync_handler(struct trapframe *tf) {
 
     case SYS_GUI_TAKE:
         gui_taken = 1;
+        gui_owner_task = task_current();
         fb_clear(0);
         tf->x[0] = 0;
         break;
     case SYS_GUI_RELEASE:
         gui_taken = 0;
+        gui_owner_task = 0;
         tf->x[0] = 0;
         break;
     case SYS_GUI_FILL_RECT:
@@ -77,6 +121,9 @@ void sync_handler(struct trapframe *tf) {
         tf->x[0] = 0;
         break;
     case SYS_GUI_PRESENT:
+        /* Kernel overlays the Close button on top of whatever the
+         * user app just finished painting, then flips. */
+        if (gui_taken) paint_close_button();
         fb_present();
         tf->x[0] = 0;
         break;
