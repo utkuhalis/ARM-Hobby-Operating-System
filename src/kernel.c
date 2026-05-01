@@ -18,6 +18,7 @@
 #include "virtio_mouse.h"
 #include "virtio_blk.h"
 #include "virtio_net.h"
+#include "net.h"
 #include "mmu.h"
 #include "task.h"
 #endif
@@ -293,12 +294,18 @@ static window_t *win_store;
 static window_t *win_notepad;
 static window_t *win_browser;
 static window_t *win_calendar;
+static window_t *win_tasks;
+static window_t *win_disks;
+static window_t *win_settings;
 static widget_t *calc_display;
 static widget_t *notepad_input;
 static widget_t *notepad_status;
 static widget_t *browser_input;
 static widget_t *browser_status;
 static window_t *win_browser_view;
+static widget_t *settings_wp_label;
+static widget_t *settings_user_label;
+static widget_t *settings_net_label;
 
 /* ---------------- App Store ---------------- */
 
@@ -745,6 +752,109 @@ static void launch_calendar(void) {
     show_window(win_calendar);
 }
 
+/* ---------------- Task Manager ---------------- */
+
+static void launch_tasks(void) {
+    if (!win_tasks) {
+        win_tasks = window_create("Task Manager", 220, 100);
+    }
+    show_window(win_tasks);
+}
+
+/* ---------------- Disk Manager ---------------- */
+
+static void launch_disks(void) {
+    if (!win_disks) {
+        win_disks = window_create("Disks", 260, 140);
+    }
+    show_window(win_disks);
+}
+
+/* ---------------- Settings (Control Panel) ---------------- */
+
+#include "wallpaper.h"
+
+static void wp_prev_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    int n = wallpaper_count();
+    int v = (wallpaper_get() + n - 1) % n;
+    wallpaper_set(v);
+    if (settings_wp_label) {
+        char msg[32];
+        const char *p = "Wallpaper: ";
+        int o = 0; while (*p) msg[o++] = *p++;
+        const char *nm = wallpaper_name(v);
+        while (*nm) msg[o++] = *nm++;
+        msg[o] = 0;
+        widget_set_text(settings_wp_label, msg);
+    }
+}
+
+static void wp_next_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    int n = wallpaper_count();
+    int v = (wallpaper_get() + 1) % n;
+    wallpaper_set(v);
+    if (settings_wp_label) {
+        char msg[32];
+        const char *p = "Wallpaper: ";
+        int o = 0; while (*p) msg[o++] = *p++;
+        const char *nm = wallpaper_name(v);
+        while (*nm) msg[o++] = *nm++;
+        msg[o] = 0;
+        widget_set_text(settings_wp_label, msg);
+    }
+}
+
+static void build_settings_window(void) {
+    win_settings = window_create_widget("Settings", 300, 200, 480, 240);
+
+    /* wallpaper section */
+    char init_wp[40];
+    {
+        const char *p = "Wallpaper: ";
+        int o = 0; while (*p) init_wp[o++] = *p++;
+        const char *nm = wallpaper_name(wallpaper_get());
+        while (*nm) init_wp[o++] = *nm++;
+        init_wp[o] = 0;
+    }
+    settings_wp_label = window_add_label(win_settings, 20, 12, 320, init_wp);
+    window_add_button(win_settings, 340, 8,  60, "<", wp_prev_cb);
+    window_add_button(win_settings, 408, 8,  60, ">", wp_next_cb);
+
+    /* account section */
+    char who[32];
+    {
+        const char *p = "Logged in as: ";
+        int o = 0; while (*p) who[o++] = *p++;
+        const char *u = account_current();
+        while (*u) who[o++] = *u++;
+        who[o] = 0;
+    }
+    settings_user_label = window_add_label(win_settings, 20, 60, 440, who);
+
+    /* network section */
+    char net[40];
+    {
+        uint32_t ip = net_my_ipv4();
+        const char *p = "Network: 10.0.2.15  (qemu user net)";
+        (void)ip;
+        int o = 0; while (*p) net[o++] = *p++;
+        net[o] = 0;
+    }
+    settings_net_label = window_add_label(win_settings, 20, 90, 440, net);
+
+    window_add_label(win_settings, 20, 140, 440,
+                     "Tip: 'wallpaper list' / 'wallpaper set N' from the");
+    window_add_label(win_settings, 20, 158, 440,
+                     "terminal also work.");
+}
+
+static void launch_settings(void) {
+    if (!win_settings) build_settings_window();
+    show_window(win_settings);
+}
+
 /* Public dispatcher used by desktop.c when a built-in dock icon is
  * clicked. Returns 0 on success, -1 if the name is unknown. */
 int kernel_launch_builtin(const char *name) {
@@ -756,6 +866,9 @@ int kernel_launch_builtin(const char *name) {
     if (strcmp(name, "App Store") == 0) { launch_store();     return 0; }
     if (strcmp(name, "Browser")   == 0) { launch_browser();   return 0; }
     if (strcmp(name, "Calendar")  == 0) { launch_calendar();  return 0; }
+    if (strcmp(name, "Tasks")     == 0) { launch_tasks();     return 0; }
+    if (strcmp(name, "Disks")     == 0) { launch_disks();     return 0; }
+    if (strcmp(name, "Settings")  == 0) { launch_settings();  return 0; }
     return -1;
 }
 
@@ -823,11 +936,121 @@ static void render_monitor_window(void) {
     }
 }
 
+static const char *task_state_str(task_state_t s) {
+    switch (s) {
+    case TASK_READY:   return "READY";
+    case TASK_RUNNING: return "RUN";
+    case TASK_DEAD:    return "DEAD";
+    }
+    return "?";
+}
+
+static void render_tasks_window(void) {
+    if (!win_tasks || !win_tasks->visible) return;
+    window_clear(win_tasks);
+    window_puts(win_tasks, "Task Manager\n");
+    window_puts(win_tasks, "----------------------------\n");
+    char buf[24];
+    int n = 0;
+    for (task_t *t = task_first(); t; t = t->next) {
+        format_uint(buf, (uint64_t)t->id);
+        window_puts(win_tasks, "[");
+        window_puts(win_tasks, buf);
+        window_puts(win_tasks, "] ");
+        /* pad/truncate name to 14 chars */
+        int j = 0;
+        for (; t->name[j] && j < 14; j++) window_putc(win_tasks, t->name[j]);
+        for (; j < 14; j++) window_putc(win_tasks, ' ');
+        window_puts(win_tasks, "  ");
+        window_puts(win_tasks, task_state_str(t->state));
+        window_puts(win_tasks, "\n");
+        n++;
+    }
+    window_puts(win_tasks, "\nuptime: ");
+    format_uint(buf, sys_uptime_seconds());
+    window_puts(win_tasks, buf);
+    window_puts(win_tasks, " s\n");
+}
+
+static void render_disks_window(void) {
+    if (!win_disks || !win_disks->visible) return;
+    window_clear(win_disks);
+    window_puts(win_disks, "Disks\n----------------------------\n");
+    /* fs files */
+    window_puts(win_disks, "[fs]\n");
+    char buf[24];
+    int total_bytes = 0;
+    int file_count = 0;
+    for (int i = 0; i < FS_MAX_FILES; i++) {
+        fs_file_t *f = fs_at(i);
+        if (!f) continue;
+        int j = 0;
+        for (; f->name[j] && j < 16; j++) window_putc(win_disks, f->name[j]);
+        for (; j < 16; j++) window_putc(win_disks, ' ');
+        format_uint(buf, (uint64_t)f->size);
+        window_puts(win_disks, "  ");
+        window_puts(win_disks, buf);
+        window_puts(win_disks, " B\n");
+        total_bytes += (int)f->size;
+        file_count++;
+    }
+    window_puts(win_disks, " total ");
+    format_uint(buf, (uint64_t)file_count);
+    window_puts(win_disks, buf);
+    window_puts(win_disks, " files, ");
+    format_uint(buf, (uint64_t)total_bytes);
+    window_puts(win_disks, buf);
+    window_puts(win_disks, " B\n\n");
+
+#ifdef BOARD_HAS_GIC
+    /* virtio-blk */
+    window_puts(win_disks, "[virtio-blk]\n");
+    if (vblk_present()) {
+        format_uint(buf, (uint64_t)vblk_capacity_sectors());
+        window_puts(win_disks, " sectors  : ");
+        window_puts(win_disks, buf);
+        window_puts(win_disks, "\n size     : ");
+        format_uint(buf, (uint64_t)vblk_capacity_sectors() * 512);
+        window_puts(win_disks, buf);
+        window_puts(win_disks, " B\n");
+    } else {
+        window_puts(win_disks, " (not present)\n");
+    }
+#endif
+}
+
+static void render_settings_window(void) {
+    /* Refresh dynamic labels (account / wallpaper) so toggling state
+     * outside the window stays in sync. */
+    if (!win_settings || !win_settings->visible) return;
+    if (settings_user_label) {
+        char who[32];
+        const char *p = "Logged in as: ";
+        int o = 0; while (*p) who[o++] = *p++;
+        const char *u = account_current();
+        while (*u && o < 30) who[o++] = *u++;
+        who[o] = 0;
+        widget_set_text(settings_user_label, who);
+    }
+    if (settings_wp_label) {
+        char msg[32];
+        const char *p = "Wallpaper: ";
+        int o = 0; while (*p) msg[o++] = *p++;
+        const char *nm = wallpaper_name(wallpaper_get());
+        while (*nm && o < 30) msg[o++] = *nm++;
+        msg[o] = 0;
+        widget_set_text(settings_wp_label, msg);
+    }
+}
+
 static void status_thread(void *arg) {
     (void)arg;
     for (;;) {
         ticker_beats++;
         render_monitor_window();
+        render_tasks_window();
+        render_disks_window();
+        render_settings_window();
 #ifdef BOARD_HAS_RAMFB
         if (vmouse_present()) {
             int32_t mx = 0, my = 0;
