@@ -51,6 +51,12 @@ static const pkg_t catalog[] = {
                 "MIT",          1, user_main_files   },
     {"sysinfo", "0.1.0", "dump CPU + memory + uptime info",
                 "MIT",          1, user_main_sysinfo },
+    /* GUI games -- no built-in fallback; they must be installed
+     * (their .elf is fetched from the repo over HTTP). */
+    {"minesweeper", "1.0.0", "10x10 minesweeper, mouse-driven",
+                "MIT",          1, 0 },
+    {"sudoku",      "1.0.0", "click a cell, type 1-9 to solve",
+                "MIT",          1, 0 },
     {0, 0, 0, 0, 0, 0},
 };
 

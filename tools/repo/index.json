@@ -59,6 +59,22 @@
       "license":  "Proprietary",
       "author":   "ACME Corp",
       "manifest": "/packages/weather/manifest.json"
+    },
+    {
+      "name":     "minesweeper",
+      "version":  "1.0.0",
+      "summary":  "10x10 minesweeper, mouse-driven",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/minesweeper/manifest.json"
+    },
+    {
+      "name":     "sudoku",
+      "version":  "1.0.0",
+      "summary":  "click a cell, type 1-9 to solve",
+      "license":  "MIT",
+      "author":   "Hobby ARM OS",
+      "manifest": "/packages/sudoku/manifest.json"
     }
   ]
 }

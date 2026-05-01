@@ -1043,10 +1043,19 @@ static void render_settings_window(void) {
     }
 }
 
+extern int gui_is_taken(void);
+
 static void status_thread(void *arg) {
     (void)arg;
     for (;;) {
         ticker_beats++;
+        if (gui_is_taken()) {
+            /* A user-mode GUI app owns the framebuffer. Don't paint
+             * the desktop on top of it. */
+            task_yield();
+            __asm__ volatile("wfi");
+            continue;
+        }
         render_monitor_window();
         render_tasks_window();
         render_disks_window();

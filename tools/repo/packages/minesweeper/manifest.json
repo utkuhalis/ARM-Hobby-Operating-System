@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "name": "minesweeper",
+  "version": "1.0.0",
+  "summary": "10x10 minesweeper, mouse-driven",
+  "description": "Click a hidden cell to reveal it, right-click to flag a suspected mine. Press 'q' to quit.",
+  "license": "MIT",
+  "open_source": true,
+  "author": "Hobby ARM OS",
+  "exec": "/packages/minesweeper/minesweeper.elf",
+  "sha256": "fb8c8264cba234d26438b96e836466853b4e80f05067f3e65969cf88a4494023",
+  "size": 69320,
+  "depends": [],
+  "syscalls": [
+    "write",
+    "exit",
+    "getpid",
+    "gui_take",
+    "gui_release",
+    "gui_fill_rect",
+    "gui_draw_text",
+    "gui_present",
+    "gui_poll",
+    "gui_sleep_ms",
+    "gui_fb_info"
+  ]
+}

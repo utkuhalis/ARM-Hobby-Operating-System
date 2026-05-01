@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "name": "sudoku",
+  "version": "1.0.0",
+  "summary": "click a cell, type 1-9 to solve",
+  "description": "A single fixed sudoku puzzle. Click a cell to select it, then type a digit. 0 or backspace clears. Right-click reveals the answer for one cell. r resets, q quits.",
+  "license": "MIT",
+  "open_source": true,
+  "author": "Hobby ARM OS",
+  "exec": "/packages/sudoku/sudoku.elf",
+  "sha256": "6c9f69d82e8d88267b6da548330ca08579e34357db10713aa5c5aa7317e304ad",
+  "size": 69120,
+  "depends": [],
+  "syscalls": [
+    "write",
+    "exit",
+    "getpid",
+    "gui_take",
+    "gui_release",
+    "gui_fill_rect",
+    "gui_draw_text",
+    "gui_present",
+    "gui_poll",
+    "gui_sleep_ms",
+    "gui_fb_info"
+  ]
+}
