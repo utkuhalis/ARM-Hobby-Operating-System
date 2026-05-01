@@ -26,6 +26,7 @@
 #include "fb.h"
 #include "fb_console.h"
 #include "window.h"
+#include "login.h"
 #endif
 
 extern uint8_t _kernel_start[];
@@ -878,6 +879,12 @@ void kernel_main(void) {
 
     /* No terminal at boot -- it appears when the user clicks the
      * Terminal dock icon (launch_terminal attaches the console then). */
+
+#if defined(BOARD_HAS_RAMFB) && defined(BOARD_HAS_GIC)
+    /* Gate the desktop behind a graphical login. Returns only after
+     * accounts.c accepts a username/password. */
+    login_run();
+#endif
 
 #ifdef BOARD_HAS_GIC
     task_spawn("idle",   idle_thread,   NULL);

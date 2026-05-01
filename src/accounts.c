@@ -21,11 +21,10 @@ static void cpyn(char *dst, const char *src, int max) {
 
 void accounts_init(void) {
     for (int i = 0; i < MAX_ACCOUNTS; i++) accounts[i].used = 0;
-    /* Default users */
+    /* Default users; login is required at boot. */
     account_add("root",  "root");
     account_add("guest", "guest");
-    /* Auto-login as root so a fresh boot has someone in the seat */
-    current_idx = 0;
+    current_idx = -1;
 }
 
 int account_add(const char *name, const char *pass) {
