@@ -569,8 +569,8 @@ static void paint_file_icons(void) {
 static const char *active_menu_labels[MENU_MAX];
 static int          active_menu_count;
 static const char *empty_menu[] = { "New Folder", "New File", "Refresh", 0 };
-static const char *file_menu[]  = { "Open", "Delete", 0 };
-static const char *folder_menu[]= { "Open Folder", "Delete", 0 };
+static const char *file_menu[]  = { "Open", "Rename", "Delete", 0 };
+static const char *folder_menu[]= { "Open Folder", "Rename", "Delete", 0 };
 
 static void set_menu(const char **items) {
     active_menu_count = 0;
@@ -601,6 +601,8 @@ static void paint_context_menu(void) {
                           active_menu_labels[i], 0x00141a26u);
     }
 }
+
+extern void notepad_open(const char *filename);
 
 /* Open a viewer window for a fs file. */
 static void open_viewer(const char *name) {
@@ -664,53 +666,166 @@ static int unique_fs_name(const char *prefix, char *out, int outsz, int folder) 
     return 0;
 }
 
-/* Open a window listing every fs file whose name starts with
- * "<folder_name>/". Each child gets a clickable label that calls
- * open_viewer when activated. The list is built once at open time;
- * to refresh, close the window and double-click the folder again. */
-#include "window.h"
-extern window_t *window_create(const char *title, int x, int y);
-extern void      window_set_focus(window_t *w);
-extern void      window_clear(window_t *w);
-extern void      window_puts(window_t *w, const char *s);
+/* Folder windows: each tracked so drag-drop release on the desktop
+ * can hit them as drop targets, and so we can rebuild the listing
+ * on demand (after a drop or a rename). */
 
-static void open_folder(const char *folder_name) {
-    /* folder_name is "foldername/" -- strip the slash for the title */
-    char title[40];
-    int o = 0;
-    const char *p = "Folder: ";
-    while (*p && o + 1 < (int)sizeof(title)) title[o++] = *p++;
-    int i = 0;
-    while (folder_name[i] && folder_name[i] != '/' && o + 1 < (int)sizeof(title)) {
-        title[o++] = folder_name[i++];
+#define MAX_FOLDER_WINDOWS 4
+
+struct folder_window {
+    window_t  *win;
+    char       prefix[FS_MAX_NAME + 1];   /* always ends with '/' */
+};
+static struct folder_window folder_windows[MAX_FOLDER_WINDOWS];
+
+extern int kernel_launch_builtin(const char *name);
+extern void notepad_open(const char *filename);
+
+static void folder_window_rebuild(struct folder_window *fw);
+
+static void folder_open_cb(window_t *w, widget_t *self) {
+    /* Each Open button stores the child filename in its widget text;
+     * the row's label widget shows the visible name. */
+    (void)w;
+    /* widget text is the absolute path */
+    notepad_open(self->text);
+}
+
+static void folder_unfile_cb(window_t *w, widget_t *self) {
+    /* Move the entry out of the folder back to the desktop top-level
+     * by stripping the folder prefix. */
+    (void)w;
+    const char *full = self->text;
+    const char *base = full;
+    for (int i = 0; full[i]; i++) if (full[i] == '/') base = full + i + 1;
+    if (!base[0]) return;
+    if (fs_find(base)) return;   /* collision; bail */
+    fs_file_t *f = fs_find(full);
+    if (!f) return;
+    uint8_t buf[FS_MAX_DATA];
+    uint32_t sz = f->size;
+    for (uint32_t k = 0; k < sz; k++) buf[k] = f->data[k];
+    (void)fs_delete(full);
+    (void)fs_write(base, buf, sz);
+    /* Refresh every folder window since the listing changed. */
+    for (int i = 0; i < MAX_FOLDER_WINDOWS; i++) {
+        if (folder_windows[i].win) folder_window_rebuild(&folder_windows[i]);
     }
-    title[o] = 0;
+}
 
-    window_t *w = window_create(title, 220, 140);
-    if (!w) return;
-    window_clear(w);
+static void folder_refresh_cb(window_t *w, widget_t *self) {
+    (void)self;
+    for (int i = 0; i < MAX_FOLDER_WINDOWS; i++) {
+        if (folder_windows[i].win == w) {
+            folder_window_rebuild(&folder_windows[i]);
+            return;
+        }
+    }
+}
 
-    /* prefix length including trailing slash */
-    int plen = 0;
-    while (folder_name[plen]) plen++;
+static void folder_window_rebuild(struct folder_window *fw) {
+    if (!fw || !fw->win) return;
+    window_t *w = fw->win;
+    /* clear widgets and rebuild */
+    w->widget_count = 0;
 
+    int plen = 0; while (fw->prefix[plen]) plen++;
+
+    window_add_label(w, 10, 6, 460, "Drop a file onto this window to move it here.");
+    window_add_button(w, 470, 4, 80, "Refresh", folder_refresh_cb);
+
+    int row_y = 32;
     int found = 0;
     for (int k = 0; k < FS_MAX_FILES; k++) {
         fs_file_t *f = fs_at(k);
         if (!f) continue;
         int matches = 1;
         for (int m = 0; m < plen; m++) {
-            if (f->name[m] != folder_name[m]) { matches = 0; break; }
+            if (f->name[m] != fw->prefix[m]) { matches = 0; break; }
         }
         if (!matches) continue;
         if (!f->name[plen]) continue;  /* the folder marker itself */
-        window_puts(w, "  ");
-        window_puts(w, f->name + plen);
-        window_puts(w, "\n");
+
+        widget_t *lbl = window_add_label(w, 14, row_y + 4, 280, f->name + plen);
+        (void)lbl;
+        widget_t *open = window_add_button(w, 300, row_y, 90, "Open",
+                                            folder_open_cb);
+        widget_t *move = window_add_button(w, 396, row_y, 130, "Move to desktop",
+                                            folder_unfile_cb);
+        /* Stash the absolute path in the button widgets so the
+         * callback knows which file to act on. */
+        widget_set_text(open, f->name);
+        widget_set_text(move, f->name);
+        row_y += 28;
         found++;
+        if (row_y > w->h - 40) break;
     }
-    if (!found) window_puts(w, "  (empty)\n");
+    if (!found) {
+        window_add_label(w, 14, row_y, 460, "(empty)");
+    }
+}
+
+static void open_folder(const char *folder_name) {
+    /* If already open, focus and refresh. */
+    for (int i = 0; i < MAX_FOLDER_WINDOWS; i++) {
+        if (folder_windows[i].win &&
+            strcmp(folder_windows[i].prefix, folder_name) == 0) {
+            window_restore(folder_windows[i].win);
+            window_set_focus(folder_windows[i].win);
+            folder_window_rebuild(&folder_windows[i]);
+            return;
+        }
+    }
+    /* find a free slot */
+    int slot = -1;
+    for (int i = 0; i < MAX_FOLDER_WINDOWS; i++) {
+        if (!folder_windows[i].win || !folder_windows[i].win->visible) {
+            slot = i; break;
+        }
+    }
+    if (slot < 0) slot = 0;
+
+    char title[40];
+    int o = 0;
+    const char *p = "Folder: ";
+    while (*p && o + 1 < (int)sizeof(title)) title[o++] = *p++;
+    for (int i = 0; folder_name[i] && folder_name[i] != '/' &&
+                    o + 1 < (int)sizeof(title); i++) {
+        title[o++] = folder_name[i];
+    }
+    title[o] = 0;
+
+    window_t *w = window_create_widget(title, 260, 160, 580, 360);
+    if (!w) return;
+
+    /* save the prefix (with trailing /) */
+    int j = 0;
+    while (folder_name[j] && j < FS_MAX_NAME) {
+        folder_windows[slot].prefix[j] = folder_name[j]; j++;
+    }
+    folder_windows[slot].prefix[j] = 0;
+    folder_windows[slot].win = w;
+
+    folder_window_rebuild(&folder_windows[slot]);
     window_set_focus(w);
+}
+
+/* Returns the prefix of a folder window whose visible content area
+ * contains (mx, my), or NULL. Used by the desktop's icon-drop path. */
+static const char *folder_window_at(int mx, int my) {
+    for (int i = 0; i < MAX_FOLDER_WINDOWS; i++) {
+        window_t *w = folder_windows[i].win;
+        if (!w || !w->visible || w->minimized || w->closing) continue;
+        /* content area excludes the title bar */
+        int x0 = w->x + WIN_BORDER;
+        int y0 = w->y + WIN_TITLE_H;
+        int x1 = w->x + w->w - WIN_BORDER;
+        int y1 = w->y + w->h - WIN_BORDER;
+        if (mx >= x0 && mx < x1 && my >= y0 && my < y1) {
+            return folder_windows[i].prefix;
+        }
+    }
+    return NULL;
 }
 
 static int find_icon_at(int32_t mx, int32_t my) {
@@ -719,6 +834,136 @@ static int find_icon_at(int32_t mx, int32_t my) {
         if (hits_ficon(&ficons[i], mx, my)) return i;
     }
     return -1;
+}
+
+/* ---- Rename dialog ----------------------------------------------- */
+
+static window_t *rename_dialog;
+static widget_t *rename_input;
+static char      rename_old_name[FS_MAX_NAME + 1];
+
+/* Move every fs entry starting with `old_prefix` to start with
+ * `new_prefix` instead. Entries that won't fit (FS_MAX_NAME) are
+ * left alone. */
+static void fs_rename_prefix(const char *old_prefix, const char *new_prefix) {
+    int op_len = 0; while (old_prefix[op_len]) op_len++;
+    int np_len = 0; while (new_prefix[np_len]) np_len++;
+    /* Snapshot names first to avoid iteration confusion. */
+    char old_names[FS_MAX_FILES][FS_MAX_NAME + 1];
+    int  count = 0;
+    for (int i = 0; i < FS_MAX_FILES; i++) {
+        fs_file_t *f = fs_at(i);
+        if (!f) continue;
+        int matches = 1;
+        for (int k = 0; k < op_len; k++) {
+            if (f->name[k] != old_prefix[k]) { matches = 0; break; }
+        }
+        if (!matches) continue;
+        int j = 0;
+        while (f->name[j] && j < FS_MAX_NAME) {
+            old_names[count][j] = f->name[j]; j++;
+        }
+        old_names[count][j] = 0;
+        count++;
+        if (count >= FS_MAX_FILES) break;
+    }
+    for (int i = 0; i < count; i++) {
+        const char *on = old_names[i];
+        char nn[FS_MAX_NAME + 1];
+        int o = 0;
+        for (int k = 0; k < np_len && o < FS_MAX_NAME; k++) nn[o++] = new_prefix[k];
+        for (int k = op_len; on[k] && o < FS_MAX_NAME; k++) nn[o++] = on[k];
+        nn[o] = 0;
+        if (fs_find(nn)) continue;  /* collision; skip */
+        fs_file_t *f = fs_find(on);
+        if (!f) continue;
+        uint8_t buf[FS_MAX_DATA];
+        uint32_t sz = f->size;
+        for (uint32_t k = 0; k < sz; k++) buf[k] = f->data[k];
+        (void)fs_delete(on);
+        (void)fs_write(nn, buf, sz);
+    }
+}
+
+static void rename_cancel_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    if (rename_dialog) window_close(rename_dialog);
+    rename_dialog = 0;
+    rename_input = 0;
+}
+
+static void rename_apply_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    if (!rename_input) return;
+    const char *new_name = widget_input_text(rename_input);
+    if (!new_name[0]) return;
+    int on_len = 0; while (rename_old_name[on_len]) on_len++;
+    int is_folder = on_len > 0 && rename_old_name[on_len - 1] == '/';
+    if (is_folder) {
+        /* Rename the folder + every nested entry. */
+        char new_prefix[FS_MAX_NAME + 1];
+        int o = 0;
+        while (new_name[o] && o < FS_MAX_NAME - 1) {
+            new_prefix[o] = new_name[o]; o++;
+        }
+        if (o == 0 || new_prefix[o - 1] != '/') new_prefix[o++] = '/';
+        new_prefix[o] = 0;
+        fs_rename_prefix(rename_old_name, new_prefix);
+    } else {
+        if (!fs_find(new_name)) {
+            fs_file_t *f = fs_find(rename_old_name);
+            if (f) {
+                uint8_t buf[FS_MAX_DATA];
+                uint32_t sz = f->size;
+                for (uint32_t k = 0; k < sz; k++) buf[k] = f->data[k];
+                (void)fs_delete(rename_old_name);
+                (void)fs_write(new_name, buf, sz);
+            }
+        }
+    }
+    /* Drop any stale icon entry tied to the old name so sync_icons
+     * picks up the new one in its proper place. */
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (!ficons[i].used) continue;
+        int eq = 1;
+        for (int k = 0; k < (int)sizeof(ficons[i].name); k++) {
+            if (ficons[i].name[k] != rename_old_name[k]) { eq = 0; break; }
+            if (rename_old_name[k] == 0) break;
+        }
+        if (eq) {
+            ficons[i].used = 0;
+            ficons[i].name[0] = 0;
+        }
+    }
+    if (rename_dialog) window_close(rename_dialog);
+    rename_dialog = 0;
+    rename_input = 0;
+}
+
+static void open_rename_dialog(const char *current_name) {
+    int o = 0;
+    while (current_name[o] && o < FS_MAX_NAME) {
+        rename_old_name[o] = current_name[o]; o++;
+    }
+    rename_old_name[o] = 0;
+
+    rename_dialog = window_create_widget("Rename", 540, 320, 460, 130);
+    if (!rename_dialog) return;
+    window_add_label(rename_dialog, 14, 8, 420, "New name:");
+    rename_input = window_add_text_input(rename_dialog, 14, 32, 420,
+                                         current_name, rename_apply_cb);
+    /* preload the input field with the current name so user can
+     * tweak it instead of retyping */
+    int j = 0;
+    while (current_name[j] && j + 1 < WIDGET_INPUT_MAX) {
+        rename_input->input[j] = current_name[j]; j++;
+    }
+    rename_input->input[j] = 0;
+    rename_input->input_len = j;
+
+    window_add_button(rename_dialog, 280, 76, 80, "Rename", rename_apply_cb);
+    /* Cancel just closes the dialog. */
+    window_add_button(rename_dialog, 370, 76, 70, "Cancel", rename_cancel_cb);
 }
 
 static int find_folder_at(int32_t mx, int32_t my, int exclude_idx) {
@@ -783,14 +1028,14 @@ static void menu_action(int idx) {
         }
         /* idx == 2 (Refresh): no-op */
     } else {
-        /* icon-context menu: idx 0 = Open, idx 1 = Delete */
+        /* icon-context menu: idx 0 = Open, idx 1 = Rename, idx 2 = Delete */
         struct file_icon *it = &ficons[menu_target_icon];
         if (idx == 0) {
             if (it->is_folder) open_folder(it->name);
-            else               open_viewer(it->name);
+            else               notepad_open(it->name);
         } else if (idx == 1) {
-            /* If the right-clicked icon isn't already selected,
-             * just delete it. Otherwise delete every selected icon. */
+            open_rename_dialog(it->name);
+        } else if (idx == 2) {
             int any_selected = 0;
             for (int i = 0; i < MAX_FILE_ICONS; i++) {
                 if (ficons[i].used && ficons[i].selected) { any_selected = 1; break; }
@@ -901,7 +1146,10 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
                     if (ficons[hovered].is_folder) {
                         open_folder(ficons[hovered].name);
                     } else {
-                        open_viewer(ficons[hovered].name);
+                        /* Editable open: load into Notepad so user
+                         * can change content and save back to the
+                         * same file. */
+                        notepad_open(ficons[hovered].name);
                     }
                     last_click_idx = -1;
                 } else {
@@ -983,14 +1231,22 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
             dicon_drag_started = 0;
 
             if (was_drag) {
+                /* Two possible drop targets: a folder *icon* on the
+                 * desktop, or a folder *window* showing its contents. */
+                const char *target_prefix = 0;
                 int folder = find_folder_at(mx, my, src);
                 if (folder >= 0 && !ficons[src].is_folder) {
-                    /* Build the new name "folderprefix" + "src->name". */
-                    const char *fp = ficons[folder].name;  /* ends with '/' */
-                    int fp_len = 0; while (fp[fp_len]) fp_len++;
+                    target_prefix = ficons[folder].name;
+                } else if (!ficons[src].is_folder) {
+                    target_prefix = folder_window_at((int)mx, (int)my);
+                }
+                if (target_prefix) {
+                    int tp_len = 0; while (target_prefix[tp_len]) tp_len++;
                     char newname[FS_MAX_NAME + 1];
                     int o = 0;
-                    while (fp[o] && o < FS_MAX_NAME) { newname[o] = fp[o]; o++; }
+                    while (target_prefix[o] && o < FS_MAX_NAME) {
+                        newname[o] = target_prefix[o]; o++;
+                    }
                     int sn_i = 0;
                     while (ficons[src].name[sn_i] && o + 1 < FS_MAX_NAME) {
                         newname[o++] = ficons[src].name[sn_i++];
@@ -1004,10 +1260,14 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
                             for (uint32_t k = 0; k < sz; k++) buf[k] = f->data[k];
                             (void)fs_delete(ficons[src].name);
                             (void)fs_write(newname, buf, sz);
-                            /* Force the icon to disappear (it's no
-                             * longer top-level) so sync_icons doesn't
-                             * re-place it on the desktop. */
                             ficons[src].used = 0;
+                            /* Refresh any open folder windows so the
+                             * dropped file shows up immediately. */
+                            for (int i = 0; i < MAX_FOLDER_WINDOWS; i++) {
+                                if (folder_windows[i].win) {
+                                    folder_window_rebuild(&folder_windows[i]);
+                                }
+                            }
                         }
                     }
                 }

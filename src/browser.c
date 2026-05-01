@@ -681,16 +681,15 @@ void browser_navigate(const char *url) {
     }
     if (n < 0) {
         kfree(body);
-        char buf[40];
-        const char *p = "fetch failed (";
-        int o = 0; while (*p) buf[o++] = *p++;
-        int err = -n;
-        if (err >= 100) buf[o++] = (char)('0' + err / 100);
-        if (err >=  10) buf[o++] = (char)('0' + (err / 10) % 10);
-        buf[o++] = (char)('0' + err % 10);
-        buf[o++] = ')';
-        buf[o] = 0;
-        set_status(0, buf);
+        const char *msg = "fetch failed";
+        switch (n) {
+        case -1: msg = "could not connect (server / network down)"; break;
+        case -2: msg = "send failed"; break;
+        case -3: msg = "malformed response"; break;
+        case -4: msg = "connection timed out"; break;
+        case -5: msg = "page too large for the buffer"; break;
+        }
+        set_status(0, msg);
         item_count = 0;
         return;
     }

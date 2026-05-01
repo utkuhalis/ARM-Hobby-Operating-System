@@ -64,6 +64,7 @@ static void cmd_crashtest(int argc, char **argv);
 static void cmd_wallpaper(int argc, char **argv);
 static void cmd_browse(int argc, char **argv);
 static void cmd_nslookup(int argc, char **argv);
+static void cmd_ping(int argc, char **argv);
 #endif
 #ifdef BOARD_HAS_GIC
 static void cmd_mouse(int argc, char **argv);
@@ -107,6 +108,7 @@ static const struct cmd cmds[] = {
     {"wallpaper", cmd_wallpaper, "wallpaper list | set <N>"},
     {"browse",  cmd_browse,    "open the browser at <url>"},
     {"nslookup",cmd_nslookup,  "DNS lookup of a hostname"},
+    {"ping",    cmd_ping,      "ICMP echo a host (4 probes)"},
 #endif
 #ifdef BOARD_HAS_GIC
     {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
@@ -595,6 +597,50 @@ static void cmd_nslookup(int argc, char **argv) {
     console_printf("nslookup: %s -> %u.%u.%u.%u\n", argv[1],
                    (ip >> 24) & 0xff, (ip >> 16) & 0xff,
                    (ip >> 8) & 0xff,  ip & 0xff);
+}
+
+static int parse_ipv4_str(const char *s, uint32_t *out) {
+    uint32_t a[4] = {0};
+    for (int i = 0; i < 4; i++) {
+        int v = 0, any = 0;
+        while (*s >= '0' && *s <= '9') { v = v*10 + (*s - '0'); s++; any = 1; }
+        if (!any || v > 255) return -1;
+        a[i] = (uint32_t)v;
+        if (i < 3) { if (*s != '.') return -1; s++; }
+    }
+    *out = (a[0] << 24) | (a[1] << 16) | (a[2] << 8) | a[3];
+    return 0;
+}
+
+static void cmd_ping(int argc, char **argv) {
+    if (argc < 2) { console_puts("usage: ping <host-or-ip>\n"); return; }
+    uint32_t ip = 0;
+    if (parse_ipv4_str(argv[1], &ip) != 0) {
+        console_printf("ping: resolving %s ...\n", argv[1]);
+        if (dns_lookup(argv[1], &ip, 750) != 0) {
+            console_printf("ping: name resolution failed\n");
+            return;
+        }
+    }
+    console_printf("PING %s (%u.%u.%u.%u)\n", argv[1],
+                   (ip>>24)&0xff,(ip>>16)&0xff,(ip>>8)&0xff,ip&0xff);
+    int sent = 0, recv = 0;
+    for (int i = 0; i < 4; i++) {
+        int rtt_ticks = net_ping(ip, 250);  /* 1s */
+        sent++;
+        if (rtt_ticks < 0) {
+            console_printf("  seq=%d  request timed out\n", i + 1);
+        } else {
+            uint32_t ms = ((uint32_t)rtt_ticks * 1000) / timer_hz();
+            console_printf("  seq=%d  time=%u ms\n", i + 1, ms);
+            recv++;
+        }
+        /* short pause between probes */
+        for (volatile int b = 0; b < 4000000; b++) { }
+    }
+    console_printf("--- %s ping statistics ---\n", argv[1]);
+    console_printf("%d sent, %d received, %d%% loss\n",
+                   sent, recv, (sent - recv) * 100 / sent);
 }
 #endif
 

@@ -441,14 +441,44 @@ static void calc_clear(window_t *w, widget_t *g) {
 
 #include "fs.h"
 
+/* Notepad now follows whichever file the user opened. notepad_open
+ * (called from desktop double-click) sets the current file name and
+ * loads its content; Save writes back to that name. */
+static char notepad_current[FS_MAX_NAME + 1] = "notes";
+
+static void notepad_set_title(void) {
+    if (!win_notepad) return;
+    char title[40];
+    int o = 0;
+    const char *p = "Notepad - ";
+    while (*p && o + 1 < (int)sizeof(title)) title[o++] = *p++;
+    int j = 0;
+    while (notepad_current[j] && o + 1 < (int)sizeof(title)) {
+        title[o++] = notepad_current[j++];
+    }
+    title[o] = 0;
+    int t = 0;
+    while (t < WIN_TITLE_MAX - 1 && title[t]) {
+        win_notepad->title[t] = title[t]; t++;
+    }
+    win_notepad->title[t] = 0;
+}
+
 static void notepad_save_cb(window_t *w, widget_t *self) {
     (void)w; (void)self;
     if (!notepad_input) return;
     const char *txt = widget_input_text(notepad_input);
     int n = 0;
     while (txt[n]) n++;
-    if (fs_write("notes", txt, (uint32_t)n) == 0) {
-        widget_set_text(notepad_status, "saved -> /notes");
+    if (fs_write(notepad_current, txt, (uint32_t)n) == 0) {
+        char msg[FS_MAX_NAME + 16];
+        int o = 0;
+        const char *p = "saved -> ";
+        while (*p) msg[o++] = *p++;
+        for (int i = 0; notepad_current[i] && o + 1 < (int)sizeof(msg); i++)
+            msg[o++] = notepad_current[i];
+        msg[o] = 0;
+        widget_set_text(notepad_status, msg);
     } else {
         widget_set_text(notepad_status, "save failed");
     }
@@ -457,12 +487,11 @@ static void notepad_save_cb(window_t *w, widget_t *self) {
 static void notepad_load_cb(window_t *w, widget_t *self) {
     (void)w; (void)self;
     if (!notepad_input) return;
-    fs_file_t *f = fs_find("notes");
+    fs_file_t *f = fs_find(notepad_current);
     if (!f) {
-        widget_set_text(notepad_status, "no /notes yet");
+        widget_set_text(notepad_status, "file not found");
         return;
     }
-    /* copy file contents into the input buffer */
     widget_input_clear(notepad_input);
     for (uint32_t i = 0; i < f->size && i < WIDGET_INPUT_MAX - 1; i++) {
         char c = (char)f->data[i];
@@ -472,18 +501,41 @@ static void notepad_load_cb(window_t *w, widget_t *self) {
             notepad_input->input[notepad_input->input_len]   = '\0';
         }
     }
-    widget_set_text(notepad_status, "loaded /notes");
+    char msg[FS_MAX_NAME + 16];
+    int o = 0;
+    const char *p = "loaded ";
+    while (*p) msg[o++] = *p++;
+    for (int i = 0; notepad_current[i] && o + 1 < (int)sizeof(msg); i++)
+        msg[o++] = notepad_current[i];
+    msg[o] = 0;
+    widget_set_text(notepad_status, msg);
+}
+
+void notepad_open(const char *filename) {
+    if (!filename || !filename[0]) return;
+    int j = 0;
+    while (filename[j] && j < FS_MAX_NAME) {
+        notepad_current[j] = filename[j]; j++;
+    }
+    notepad_current[j] = 0;
+    /* lazily build the window if it doesn't exist yet */
+    extern int kernel_launch_builtin(const char *name);
+    kernel_launch_builtin("Notepad");
+    if (!notepad_input) return;
+    notepad_set_title();
+    /* simulate clicking Load with the new current name */
+    notepad_load_cb(0, 0);
 }
 
 static void build_notepad_window(void) {
-    win_notepad = window_create_widget("Notepad", 320, 200, 480, 90);
-    window_add_label(win_notepad,  10,  4, 460, "Type a note, then Save:");
-    notepad_input  = window_add_text_input(win_notepad, 10, 22, 280,
+    win_notepad = window_create_widget("Notepad - notes", 320, 200, 720, 130);
+    window_add_label(win_notepad, 10, 6, 700, "Edit, then Save:");
+    notepad_input  = window_add_text_input(win_notepad, 10, 30, 520,
                                            "(click here, then type)",
                                            notepad_save_cb);
-    window_add_button(win_notepad, 296, 18, 80, "Save", notepad_save_cb);
-    window_add_button(win_notepad, 380, 18, 80, "Load", notepad_load_cb);
-    notepad_status = window_add_label(win_notepad, 10, 44, 460, "");
+    window_add_button(win_notepad, 540, 26, 80, "Save", notepad_save_cb);
+    window_add_button(win_notepad, 626, 26, 80, "Load", notepad_load_cb);
+    notepad_status = window_add_label(win_notepad, 10, 64, 700, "");
 }
 
 static void build_calculator_window(void) {
@@ -758,11 +810,163 @@ static void launch_calendar(void) {
 
 /* ---------------- Task Manager ---------------- */
 
+static int       tasks_advanced;     /* 0 = simple, 1 = advanced */
+static widget_t *tasks_mode_btn;
+static widget_t *tasks_canvas;
+
+static void tasks_mode_cb(window_t *w, widget_t *self) {
+    (void)w;
+    tasks_advanced = !tasks_advanced;
+    widget_set_text(self, tasks_advanced ? "Mode: Advanced" : "Mode: Simple");
+}
+
+static const char *task_state_str_short(task_state_t s) {
+    switch (s) {
+    case TASK_RUNNING: return "RUN";
+    case TASK_READY:   return "READY";
+    case TASK_DEAD:    return "DEAD";
+    }
+    return "?";
+}
+
+static void format_uint_pad(char *buf, uint64_t v, int width) {
+    char tmp[24]; int n = 0;
+    if (v == 0) tmp[n++] = '0';
+    while (v > 0) { tmp[n++] = (char)('0' + v % 10); v /= 10; }
+    int o = 0;
+    for (int i = n; i < width; i++) buf[o++] = ' ';
+    while (n > 0) buf[o++] = tmp[--n];
+    buf[o] = 0;
+}
+
+static void tasks_canvas_paint(window_t *w, widget_t *self,
+                               int abs_x, int abs_y) {
+    (void)w;
+    int cw = self->w, ch = self->h;
+    fb_fill_rect((uint32_t)abs_x, (uint32_t)abs_y, (uint32_t)cw, (uint32_t)ch,
+                 0x00f6f8fcu);
+
+    int row_h = 22;
+    int x = abs_x + 14;
+    int y = abs_y + 10;
+
+    /* Header */
+    if (tasks_advanced) {
+        fb_draw_string_ui((uint32_t)x,         (uint32_t)y, "PID",      0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 60),  (uint32_t)y, "NAME",     0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 230), (uint32_t)y, "STATE",    0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 310), (uint32_t)y, "KIND",     0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 390), (uint32_t)y, "TICKS",    0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 480), (uint32_t)y, "%CPU",     0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 560), (uint32_t)y, "STACK",    0x00606878u);
+    } else {
+        fb_draw_string_ui((uint32_t)x,         (uint32_t)y, "ID",    0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 60),  (uint32_t)y, "NAME",  0x00606878u);
+        fb_draw_string_ui((uint32_t)(x + 280), (uint32_t)y, "STATE", 0x00606878u);
+    }
+    fb_fill_rect((uint32_t)x, (uint32_t)(y + row_h - 4),
+                 (uint32_t)(cw - 28), 1, 0x00d0d6e0u);
+    y += row_h;
+
+    /* Total ticks across non-dead tasks for %CPU computation */
+    uint64_t total_ticks = 0;
+    for (task_t *t = task_first(); t; t = t->next) {
+        if (t->state != TASK_DEAD) total_ticks += t->ran_ticks;
+    }
+    if (total_ticks == 0) total_ticks = 1;
+
+    char buf[40];
+    for (task_t *t = task_first(); t; t = t->next) {
+        if (y + row_h > abs_y + ch) break;
+
+        int x_pos = x;
+        format_uint_pad(buf, (uint64_t)t->id, 0);
+        fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y, buf, 0x00141a26u);
+
+        if (tasks_advanced) {
+            x_pos = x + 60;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y, t->name,
+                              t->state == TASK_RUNNING ? 0x00006a3cu : 0x00141a26u);
+
+            x_pos = x + 230;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y,
+                              task_state_str_short(t->state),
+                              t->state == TASK_DEAD ? 0x00cc3737u : 0x00141a26u);
+
+            x_pos = x + 310;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y,
+                              t->is_user ? "user" : "kernel", 0x00606878u);
+
+            x_pos = x + 390;
+            format_uint_pad(buf, t->ran_ticks, 0);
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y, buf, 0x00141a26u);
+
+            x_pos = x + 480;
+            uint32_t pct = (uint32_t)((t->ran_ticks * 1000) / total_ticks);
+            int o = 0;
+            buf[o++] = (char)('0' + (pct / 100) % 10);
+            uint32_t hd = (pct / 10) % 10;
+            if (hd > 0 || (pct/100)%10 != 0) buf[o++] = (char)('0' + hd);
+            buf[o++] = '.'; buf[o++] = (char)('0' + pct % 10);
+            buf[o++] = '%'; buf[o] = 0;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y, buf, 0x00141a26u);
+
+            x_pos = x + 560;
+            format_uint_pad(buf, (uint64_t)t->stack_size, 0);
+            int n = 0; while (buf[n]) n++;
+            buf[n++] = ' '; buf[n++] = 'B'; buf[n] = 0;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y, buf, 0x00606878u);
+        } else {
+            x_pos = x + 60;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y, t->name,
+                              t->state == TASK_RUNNING ? 0x00006a3cu : 0x00141a26u);
+            x_pos = x + 280;
+            fb_draw_string_ui((uint32_t)x_pos, (uint32_t)y,
+                              task_state_str_short(t->state),
+                              t->state == TASK_DEAD ? 0x00cc3737u : 0x00141a26u);
+        }
+        y += row_h;
+    }
+
+    /* Footer */
+    int foot_y = abs_y + ch - 24;
+    fb_fill_rect((uint32_t)abs_x, (uint32_t)foot_y,
+                 (uint32_t)cw, 1, 0x00d0d6e0u);
+    int n_alive = 0;
+    for (task_t *t = task_first(); t; t = t->next) {
+        if (t->state != TASK_DEAD) n_alive++;
+    }
+    char foot[64];
+    int o = 0;
+    const char *p = "tasks alive: ";
+    while (*p) foot[o++] = *p++;
+    int v = n_alive;
+    if (v == 0) foot[o++] = '0';
+    char tmp[8]; int tn = 0;
+    while (v > 0) { tmp[tn++] = (char)('0' + v % 10); v /= 10; }
+    while (tn > 0) foot[o++] = tmp[--tn];
+    p = "    uptime: ";
+    while (*p) foot[o++] = *p++;
+    extern uint64_t sys_uptime_seconds(void);
+    uint64_t up = sys_uptime_seconds();
+    if (up == 0) foot[o++] = '0';
+    tn = 0;
+    while (up > 0) { tmp[tn++] = (char)('0' + up % 10); up /= 10; }
+    while (tn > 0) foot[o++] = tmp[--tn];
+    foot[o++] = ' '; foot[o++] = 's'; foot[o] = 0;
+    fb_draw_string_ui((uint32_t)(abs_x + 14), (uint32_t)(foot_y + 4),
+                      foot, 0x00606878u);
+}
+
 static void launch_tasks(void) {
     if (!win_tasks) {
-        /* Title matches the dock label so the dock running-indicator
-         * lines up. */
-        win_tasks = window_create("Tasks", 220, 100);
+        win_tasks = window_create_widget("Tasks", 200, 80, 760, 480);
+        tasks_mode_btn = window_add_button(win_tasks, 8, 6, 180,
+                                           "Mode: Simple", tasks_mode_cb);
+        tasks_canvas   = window_add_canvas(win_tasks, 0, 36,
+                                           756, 480 - 36 - 18,
+                                           0,
+                                           tasks_canvas_paint, 0);
     }
     show_window(win_tasks);
 }
@@ -942,41 +1146,9 @@ static void render_monitor_window(void) {
     }
 }
 
-static const char *task_state_str(task_state_t s) {
-    switch (s) {
-    case TASK_READY:   return "READY";
-    case TASK_RUNNING: return "RUN";
-    case TASK_DEAD:    return "DEAD";
-    }
-    return "?";
-}
-
-static void render_tasks_window(void) {
-    if (!win_tasks || !win_tasks->visible) return;
-    window_clear(win_tasks);
-    window_puts(win_tasks, "Task Manager\n");
-    window_puts(win_tasks, "----------------------------\n");
-    char buf[24];
-    int n = 0;
-    for (task_t *t = task_first(); t; t = t->next) {
-        format_uint(buf, (uint64_t)t->id);
-        window_puts(win_tasks, "[");
-        window_puts(win_tasks, buf);
-        window_puts(win_tasks, "] ");
-        /* pad/truncate name to 14 chars */
-        int j = 0;
-        for (; t->name[j] && j < 14; j++) window_putc(win_tasks, t->name[j]);
-        for (; j < 14; j++) window_putc(win_tasks, ' ');
-        window_puts(win_tasks, "  ");
-        window_puts(win_tasks, task_state_str(t->state));
-        window_puts(win_tasks, "\n");
-        n++;
-    }
-    window_puts(win_tasks, "\nuptime: ");
-    format_uint(buf, sys_uptime_seconds());
-    window_puts(win_tasks, buf);
-    window_puts(win_tasks, " s\n");
-}
+/* Old text-based task render is replaced by the widget-based
+ * window in launch_tasks. The canvas paints on every compose. */
+static void render_tasks_window(void) { /* no-op */ }
 
 static void render_disks_window(void) {
     if (!win_disks || !win_disks->visible) return;

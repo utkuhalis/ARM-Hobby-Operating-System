@@ -42,6 +42,10 @@ void timer_tick(void) {
     if ((tick_count & 0x7) == 0) {
         task_request_resched();
     }
+    /* charge this tick to whoever was running -- gives Task Manager
+     * a meaningful 'ran ticks' / %CPU column. */
+    task_t *cur = task_current();
+    if (cur) cur->ran_ticks++;
 }
 
 uint64_t timer_ticks(void) {

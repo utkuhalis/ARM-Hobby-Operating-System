@@ -308,7 +308,8 @@ int window_hits(int x, int y) {
     for (int i = window_n - 1; i >= 0; i--) {
         window_t *w = &windows[i];
         if (!w->visible) continue;
-        if (w->anim_t < 200) continue;   /* still animating in */
+        if (w->minimized) continue;       /* hidden, no hit */
+        if (w->anim_t < 200) continue;    /* still animating in */
         if (x >= w->x && x < w->x + w->w &&
             y >= w->y && y < w->y + w->h) {
             return 1;
@@ -318,10 +319,12 @@ int window_hits(int x, int y) {
 }
 
 window_t *window_find_by_title(const char *title) {
+    /* Match a window by title, treating minimized as still "open"
+     * so the dock indicator stays lit while the window is hidden. */
     for (int i = 0; i < window_n; i++) {
         window_t *w = &windows[i];
-        if (!w->visible) continue;
         if (w->closing) continue;
+        if (!w->visible && !w->minimized) continue;
         if (strcmp(w->title, title) == 0) return w;
     }
     return NULL;

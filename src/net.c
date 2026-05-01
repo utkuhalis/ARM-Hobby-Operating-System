@@ -202,6 +202,13 @@ uint32_t net_pseudo_sum(uint32_t src_ip, uint32_t dst_ip,
 
 /* ------------- ICMP echo ------------- */
 
+/* Outbound echo: state set by net_ping while we wait for a reply. */
+static volatile int      ping_pending;
+static volatile uint16_t ping_id;
+static volatile uint16_t ping_seq;
+static volatile int      ping_replied;
+static volatile uint64_t ping_replied_tick;
+
 static void handle_icmp(const uint8_t *eth, uint32_t len,
                         const uint8_t *ip, uint8_t ihl, uint16_t total) {
     (void)len;
@@ -209,6 +216,16 @@ static void handle_icmp(const uint8_t *eth, uint32_t len,
     if (total < ihl + 8) return;
     const uint8_t *icmp = ip + ihl;
     uint32_t icmp_len = total - ihl;
+    /* Echo reply: drive any pending net_ping. */
+    if (icmp[0] == 0 && icmp_len >= 8 && ping_pending) {
+        uint16_t id  = (uint16_t)((icmp[4] << 8) | icmp[5]);
+        uint16_t seq = (uint16_t)((icmp[6] << 8) | icmp[7]);
+        if (id == ping_id && seq == ping_seq) {
+            ping_replied_tick = timer_ticks();
+            ping_replied = 1;
+        }
+        return;
+    }
     if (icmp[0] != 8) return;  /* not echo request */
 
     static uint8_t reply[1500];
@@ -330,6 +347,50 @@ int net_send_ipv4(uint32_t dst_ip, uint8_t proto,
         pkt[14 + 20 + i] = payload[i];
     }
     return vnet_send(pkt, 14 + 20 + plen);
+}
+
+int net_ping(uint32_t target_ip, uint32_t timeout_ticks) {
+    static uint16_t next_seq;
+    uint16_t id  = (uint16_t)(timer_ticks() & 0xffff);
+    if (id == 0) id = 1;
+    uint16_t seq = ++next_seq;
+
+    uint8_t pkt[64];
+    pkt[0] = 8;          /* echo request */
+    pkt[1] = 0;
+    pkt[2] = 0; pkt[3] = 0;     /* checksum (computed below) */
+    pkt[4] = (uint8_t)(id >> 8);
+    pkt[5] = (uint8_t)id;
+    pkt[6] = (uint8_t)(seq >> 8);
+    pkt[7] = (uint8_t)seq;
+    /* 32 bytes of payload */
+    int total = 8 + 32;
+    for (int i = 0; i < 32; i++) pkt[8 + i] = (uint8_t)('a' + (i & 0x1f));
+    uint16_t cs = net_csum(pkt, (uint32_t)total, 0);
+    pkt[2] = (uint8_t)(cs >> 8);
+    pkt[3] = (uint8_t)cs;
+
+    ping_id      = id;
+    ping_seq     = seq;
+    ping_replied = 0;
+    ping_pending = 1;
+    uint64_t t0 = timer_ticks();
+
+    if (net_send_ipv4(target_ip, IP_PROTO_ICMP, pkt, (uint32_t)total) != 0) {
+        ping_pending = 0;
+        return -1;
+    }
+
+    uint64_t deadline = t0 + timeout_ticks;
+    while (!ping_replied) {
+        if (timer_ticks() > deadline) {
+            ping_pending = 0;
+            return -2;
+        }
+        __asm__ volatile("wfi");
+    }
+    ping_pending = 0;
+    return (int)(ping_replied_tick - t0);
 }
 
 int net_send_udp(uint32_t dst_ip, uint16_t src_port, uint16_t dst_port,

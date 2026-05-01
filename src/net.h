@@ -29,6 +29,10 @@ int  net_send_ipv4(uint32_t dst_ip, uint8_t proto,
 int  net_send_udp(uint32_t dst_ip, uint16_t src_port, uint16_t dst_port,
                   const uint8_t *payload, uint32_t plen);
 
+/* Send an ICMP echo and wait for its reply. Returns the RTT in
+ * timer ticks on success, <0 on timeout / send failure. */
+int  net_ping(uint32_t target_ip, uint32_t timeout_ticks);
+
 /* Internet checksum -- exposed so TCP/UDP can compute their own. */
 uint16_t net_csum(const uint8_t *data, uint32_t len, uint32_t carry);
 
