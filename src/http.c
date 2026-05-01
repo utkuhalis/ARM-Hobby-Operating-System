@@ -98,3 +98,93 @@ int http_get(uint32_t ip, uint16_t port,
     tcp_close();
     return (int)body_len;
 }
+
+static void itoa10(uint32_t v, char *out) {
+    char tmp[12]; int n = 0;
+    if (v == 0) tmp[n++] = '0';
+    while (v > 0) { tmp[n++] = (char)('0' + v % 10); v /= 10; }
+    int o = 0;
+    while (n > 0) out[o++] = tmp[--n];
+    out[o] = 0;
+}
+
+int http_post(uint32_t ip, uint16_t port,
+              const char *host, const char *path,
+              const char *content_type,
+              const uint8_t *body_in, uint32_t body_in_len,
+              uint8_t *out_buf, uint32_t out_max,
+              int *status_out) {
+    if (status_out) *status_out = 0;
+    if (!content_type) content_type = "application/octet-stream";
+
+    if (tcp_connect(ip, port, 2500) != 0) return -1;
+
+    uint8_t hdr[768];
+    uint32_t off = 0;
+    if (!append(hdr, &off, sizeof(hdr), "POST ")) { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), path))    { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), " HTTP/1.0\r\nHost: ")) { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), host))    { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), "\r\nContent-Type: ")) { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), content_type)) { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), "\r\nContent-Length: ")) { tcp_close(); return -2; }
+    char ln[12]; itoa10(body_in_len, ln);
+    if (!append(hdr, &off, sizeof(hdr), ln)) { tcp_close(); return -2; }
+    if (!append(hdr, &off, sizeof(hdr), "\r\nConnection: close\r\n\r\n")) {
+        tcp_close(); return -2;
+    }
+
+    if (tcp_send(hdr, off, 2500) != (int)off) { tcp_close(); return -2; }
+    if (body_in_len > 0) {
+        if (tcp_send(body_in, body_in_len, 2500) != (int)body_in_len) {
+            tcp_close(); return -2;
+        }
+    }
+
+    /* Drain response (headers + body). Same loop shape as http_get. */
+    uint32_t body_len = 0;
+    int header_done = 0;
+    int status_parsed = 0;
+    uint8_t hbuf[512];
+    uint32_t hlen = 0;
+    uint8_t buf[1024];
+    int crlf_state = 0;
+
+    for (;;) {
+        int n = tcp_recv(buf, sizeof(buf), 2500);
+        if (n == 0) break;
+        if (n == -1) { tcp_close(); return -4; }
+        if (n < 0)   { tcp_close(); return -3; }
+        for (int i = 0; i < n; i++) {
+            uint8_t c = buf[i];
+            if (!header_done) {
+                if (hlen < sizeof(hbuf)) hbuf[hlen++] = c;
+                if (crlf_state == 0 && c == '\r') crlf_state = 1;
+                else if (crlf_state == 1 && c == '\n') crlf_state = 2;
+                else if (crlf_state == 2 && c == '\r') crlf_state = 3;
+                else if (crlf_state == 3 && c == '\n') {
+                    header_done = 1; crlf_state = 0;
+                } else if (c == '\r') crlf_state = 1;
+                else crlf_state = 0;
+                if (header_done && !status_parsed && hlen > 12 &&
+                    hbuf[0]=='H' && hbuf[1]=='T' && hbuf[2]=='T' && hbuf[3]=='P') {
+                    int sp = 0;
+                    while (sp < (int)hlen && hbuf[sp] != ' ') sp++;
+                    if (sp + 3 < (int)hlen) {
+                        int code = (hbuf[sp+1]-'0')*100 +
+                                   (hbuf[sp+2]-'0')*10  +
+                                   (hbuf[sp+3]-'0');
+                        if (status_out) *status_out = code;
+                        status_parsed = 1;
+                    }
+                }
+            } else {
+                if (body_len >= out_max) { tcp_close(); return -5; }
+                out_buf[body_len++] = c;
+            }
+        }
+    }
+
+    tcp_close();
+    return (int)body_len;
+}

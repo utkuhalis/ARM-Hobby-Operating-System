@@ -567,6 +567,7 @@ static void build_calculator_window(void) {
 
 #include "http.h"
 #include "browser.h"
+#include "maker.h"
 #define LEGACY_BROWSER 0
 #if LEGACY_BROWSER
 
@@ -802,6 +803,11 @@ static void launch_store(void) {
 static void launch_browser(void) {
     if (!win_browser) win_browser = browser_window();
     show_window(win_browser);
+}
+static window_t *win_maker;
+static void launch_maker(void) {
+    if (!win_maker) win_maker = maker_window();
+    show_window(win_maker);
 }
 static void launch_calendar(void) {
     if (!win_calendar) build_calendar_window();
@@ -1076,6 +1082,7 @@ int kernel_launch_builtin(const char *name) {
     if (strcmp(name, "App Store") == 0) { launch_store();     return 0; }
     if (strcmp(name, "Browser")   == 0) { launch_browser();   return 0; }
     if (strcmp(name, "Calendar")  == 0) { launch_calendar();  return 0; }
+    if (strcmp(name, "Maker")     == 0) { launch_maker();     return 0; }
     if (strcmp(name, "Tasks")     == 0) { launch_tasks();     return 0; }
     if (strcmp(name, "Disks")     == 0) { launch_disks();     return 0; }
     if (strcmp(name, "Settings")  == 0) { launch_settings();  return 0; }

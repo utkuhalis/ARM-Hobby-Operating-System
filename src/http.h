@@ -24,4 +24,15 @@ int http_get(uint32_t ip, uint16_t port,
              uint8_t *out_buf, uint32_t out_max,
              int *status_out);
 
+/* POST: like http_get but sends `body_in` of `body_in_len` bytes
+ * with the given Content-Type. Returns the number of body bytes
+ * written into out_buf on success, otherwise the same error
+ * codes as http_get. */
+int http_post(uint32_t ip, uint16_t port,
+              const char *host, const char *path,
+              const char *content_type,
+              const uint8_t *body_in, uint32_t body_in_len,
+              uint8_t *out_buf, uint32_t out_max,
+              int *status_out);
+
 #endif

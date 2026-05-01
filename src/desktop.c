@@ -40,6 +40,7 @@ static const struct builtin_app builtins[] = {
     {"Notepad",    0x00b0b8c8u},
     {"Browser",    0x0044c87au},
     {"Calendar",   0x00cc7a44u},
+    {"Maker",      0x00bd5db5u},
     {"Tasks",      0x00a23a4eu},
     {"Disks",      0x004e7aa2u},
     {"Settings",   0x006a6e80u},

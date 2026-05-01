@@ -31,7 +31,7 @@ C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
            $(SRC)/task.c $(SRC)/syscall.c $(SRC)/user_program.c \
            $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/window.c \
            $(SRC)/desktop.c $(SRC)/login.c $(SRC)/boot_splash.c \
-           $(SRC)/wallpaper.c $(SRC)/browser.c \
+           $(SRC)/wallpaper.c $(SRC)/browser.c $(SRC)/maker.c \
            $(SRC)/fw_cfg.c $(SRC)/font.c
 S_SRCS  := $(SRC)/boot.S $(SRC)/vectors.S $(SRC)/switch.S
 else
@@ -51,7 +51,7 @@ else
 ALL     := $(ELF) $(IMG)
 endif
 
-.PHONY: all run clean pkg-build pkg-build-all repo-rebuild
+.PHONY: all run clean pkg-build pkg-build-all repo-rebuild mkt-rebuild
 
 all: $(ALL) $(DISK_IMG)
 
@@ -130,3 +130,18 @@ repo-rebuild:
 	docker build -t hobby-os-repo tools/repo
 	docker run -d --rm --name hobby-repo -p 8090:8080 hobby-os-repo
 	@echo "repo listening at http://localhost:8090"
+
+# Build + (re)launch the marketplace backend (community programs +
+# ratings + comments). Mounts tools/repo as /repo so the static
+# .elf collection is served from the same service, and a local
+# build/mkt-data dir as /data for the SQLite database. Drop the
+# existing hobby-repo first so the port lines up.
+mkt-rebuild:
+	docker rm -f hobby-repo 2>/dev/null || true
+	docker build -t hobby-marketplace tools/marketplace
+	mkdir -p build/mkt-data
+	docker run -d --rm --name hobby-repo -p 8090:8080 \
+	    -v $$(pwd)/tools/repo:/repo \
+	    -v $$(pwd)/build/mkt-data:/data \
+	    hobby-marketplace
+	@echo "marketplace listening at http://localhost:8090"
