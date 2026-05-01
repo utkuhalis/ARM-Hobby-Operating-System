@@ -10,6 +10,7 @@
 #include "net.h"
 #include "fs.h"
 #include "window.h"
+#include "task.h"
 
 #define TOP_BG      0x00141a26u
 #define TOP_FG      0x00d6dde9u
@@ -57,6 +58,7 @@ struct dock_item {
     uint32_t color;
     int      x, y;
     int      pressed;
+    int      running;          /* updated each frame in paint_dock */
 };
 
 static struct dock_item dock[MAX_DOCK_ITEMS];
@@ -273,13 +275,26 @@ static void paint_dock(void) {
 
     for (int i = 0; i < dock_count; i++) {
         struct dock_item *it = &dock[i];
+
+        /* refresh running state each frame */
+        if (it->kind == DOCK_KIND_BUILTIN) {
+            it->running = window_find_by_title(it->name) != 0;
+        } else {
+            it->running = task_find_by_name(it->name) != 0;
+        }
+
         int sz = ICON_SIZE - (it->pressed ? 2 : 0);
         int ix = it->x + (it->pressed ? 1 : 0);
         int iy = it->y + (it->pressed ? 1 : 0);
 
+        /* Soft halo behind the icon when the app is open */
+        if (it->running) {
+            fb_fill_rect((uint32_t)(it->x - 6), (uint32_t)(it->y - 6),
+                         ICON_SIZE + 12, ICON_SIZE + 12, 0x00263a55u);
+        }
+
         fb_fill_rect((uint32_t)ix, (uint32_t)iy,
                      (uint32_t)sz, (uint32_t)sz, it->color);
-        /* darker border */
         fb_fill_rect((uint32_t)ix, (uint32_t)iy, (uint32_t)sz, 1, DOCK_BORDER);
         fb_fill_rect((uint32_t)ix, (uint32_t)(iy + sz - 1),
                      (uint32_t)sz, 1, DOCK_BORDER);
@@ -287,7 +302,6 @@ static void paint_dock(void) {
         fb_fill_rect((uint32_t)(ix + sz - 1), (uint32_t)iy,
                      1, (uint32_t)sz, DOCK_BORDER);
 
-        /* Big first letter (heading-size smooth font) */
         char letter = it->name[0];
         if (letter >= 'a' && letter <= 'z') letter -= 'a' - 'A';
         char one[2] = { letter, 0 };
@@ -296,7 +310,6 @@ static void paint_dock(void) {
                           (uint32_t)(iy + sz / 2 - 14),
                           one, TOP_FG);
 
-        /* Label, smooth UI font, clipped to fit. */
         char label[20];
         int li = 0;
         while (li < 12 && it->name[li]) { label[li] = it->name[li]; li++; }
@@ -306,6 +319,14 @@ static void paint_dock(void) {
         fb_draw_string_ui((uint32_t)label_x,
                           (uint32_t)(it->y + ICON_SIZE + 4),
                           label, TOP_FG);
+
+        /* Running indicator dot below the label */
+        if (it->running) {
+            int dot_x = it->x + ICON_SIZE / 2 - 3;
+            int dot_y = it->y + ICON_SIZE + 4 + (int)fb_text_ui_line_height() + 4;
+            fb_fill_rect((uint32_t)dot_x, (uint32_t)dot_y,
+                         6, 6, 0x004a90e2u);
+        }
     }
 }
 

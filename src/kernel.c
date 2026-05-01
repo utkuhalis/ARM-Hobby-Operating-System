@@ -760,7 +760,9 @@ static void launch_calendar(void) {
 
 static void launch_tasks(void) {
     if (!win_tasks) {
-        win_tasks = window_create("Task Manager", 220, 100);
+        /* Title matches the dock label so the dock running-indicator
+         * lines up. */
+        win_tasks = window_create("Tasks", 220, 100);
     }
     show_window(win_tasks);
 }

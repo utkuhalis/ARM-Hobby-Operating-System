@@ -120,6 +120,10 @@ window_t *window_at(int idx);
  * selection or eat clicks that should reach a window. */
 int      window_hits(int x, int y);
 
+/* Find a non-dead window by title. Returns NULL if none exists, or
+ * if the only matches are minimized / closing. */
+window_t *window_find_by_title(const char *title);
+
 /* Pointer event dispatcher: call once per tick with the latest cursor
  * state. Handles click-to-focus and title-bar dragging. */
 void     window_handle_pointer(int32_t mx, int32_t my, int buttons);

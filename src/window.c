@@ -317,6 +317,16 @@ int window_hits(int x, int y) {
     return 0;
 }
 
+window_t *window_find_by_title(const char *title) {
+    for (int i = 0; i < window_n; i++) {
+        window_t *w = &windows[i];
+        if (!w->visible) continue;
+        if (w->closing) continue;
+        if (strcmp(w->title, title) == 0) return w;
+    }
+    return NULL;
+}
+
 static int point_in_window(window_t *w, int x, int y) {
     return x >= w->x && x < w->x + w->w &&
            y >= w->y && y < w->y + w->h;
