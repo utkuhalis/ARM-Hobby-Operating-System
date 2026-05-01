@@ -48,6 +48,22 @@ static fs_file_t *fs_alloc(void) {
     return 0;
 }
 
+/* Forward decl: defined inside the BOARD_HAS_GIC block below. On
+ * boards without virtio-blk this resolves to a stub. */
+#ifdef BOARD_HAS_GIC
+int fs_save(void);
+#endif
+
+static int auto_save_armed;
+
+void fs_set_autosave(int on) { auto_save_armed = on; }
+
+static void try_autosave(void) {
+#ifdef BOARD_HAS_GIC
+    if (auto_save_armed) (void)fs_save();
+#endif
+}
+
 int fs_write(const char *name, const void *data, uint32_t size) {
     if (size > FS_MAX_DATA) return -1;
     if (strlen(name) > FS_MAX_NAME) return -1;
@@ -64,6 +80,7 @@ int fs_write(const char *name, const void *data, uint32_t size) {
     }
     if (size > 0) memcpy(f->data, data, size);
     f->size = size;
+    try_autosave();
     return 0;
 }
 
@@ -73,6 +90,7 @@ int fs_delete(const char *name) {
     f->used = 0;
     f->name[0] = '\0';
     f->size = 0;
+    try_autosave();
     return 0;
 }
 

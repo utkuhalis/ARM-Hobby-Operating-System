@@ -213,6 +213,10 @@ static void post(void) {
         if (!fs_find("notes")) {
             (void)fs_write("notes", "scratch pad\n", 12);
         }
+        /* Persist the seed files now, then arm auto-save so every
+         * subsequent fs_write / fs_delete flushes to virtio-blk. */
+        (void)fs_save();
+        fs_set_autosave(1);
     } else {
         console_puts("[ -- ] Block    no virtio-blk found\n");
     }
