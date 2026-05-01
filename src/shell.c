@@ -63,6 +63,7 @@ static void cmd_crashtest(int argc, char **argv);
 #ifdef BOARD_HAS_RAMFB
 static void cmd_wallpaper(int argc, char **argv);
 static void cmd_browse(int argc, char **argv);
+static void cmd_nslookup(int argc, char **argv);
 #endif
 #ifdef BOARD_HAS_GIC
 static void cmd_mouse(int argc, char **argv);
@@ -105,6 +106,7 @@ static const struct cmd cmds[] = {
 #ifdef BOARD_HAS_RAMFB
     {"wallpaper", cmd_wallpaper, "wallpaper list | set <N>"},
     {"browse",  cmd_browse,    "open the browser at <url>"},
+    {"nslookup",cmd_nslookup,  "DNS lookup of a hostname"},
 #endif
 #ifdef BOARD_HAS_GIC
     {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
@@ -579,6 +581,20 @@ static void cmd_browse(int argc, char **argv) {
     kernel_launch_builtin("Browser");
     if (argc >= 2) browser_navigate(argv[1]);
     else           browser_navigate("about:home");
+}
+
+#include "dns.h"
+static void cmd_nslookup(int argc, char **argv) {
+    if (argc < 2) { console_puts("usage: nslookup <name>\n"); return; }
+    uint32_t ip = 0;
+    int r = dns_lookup(argv[1], &ip, 750);
+    if (r != 0) {
+        console_printf("nslookup: %s -> failed (%d)\n", argv[1], r);
+        return;
+    }
+    console_printf("nslookup: %s -> %u.%u.%u.%u\n", argv[1],
+                   (ip >> 24) & 0xff, (ip >> 16) & 0xff,
+                   (ip >> 8) & 0xff,  ip & 0xff);
 }
 #endif
 

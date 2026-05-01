@@ -25,6 +25,10 @@ int  net_arp_resolve(uint32_t ip, uint8_t mac_out[6], uint32_t timeout_ticks);
 int  net_send_ipv4(uint32_t dst_ip, uint8_t proto,
                    const uint8_t *payload, uint32_t plen);
 
+/* Build a UDP datagram (with proper UDP+IPv4 header pair) and send. */
+int  net_send_udp(uint32_t dst_ip, uint16_t src_port, uint16_t dst_port,
+                  const uint8_t *payload, uint32_t plen);
+
 /* Internet checksum -- exposed so TCP/UDP can compute their own. */
 uint16_t net_csum(const uint8_t *data, uint32_t len, uint32_t carry);
 

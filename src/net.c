@@ -4,6 +4,7 @@
 #include "str.h"
 #include "timer.h"
 #include "tcp.h"
+#include "dns.h"
 
 /*
  * Tiny networking stack: ARP, ICMP echo, IPv4 transmit/receive routing,
@@ -20,6 +21,7 @@
 
 #define IP_PROTO_ICMP 1
 #define IP_PROTO_TCP  6
+#define IP_PROTO_UDP  17
 
 /* QEMU usermode network: gateway 10.0.2.2, guest gets 10.0.2.15. */
 #define DEFAULT_IP      ((10u << 24) | (0u << 16) | (2u << 8) | 15u)
@@ -263,6 +265,18 @@ static void handle_ipv4(const uint8_t *eth, uint32_t len) {
         tcp_input(src_ip, dst_ip, seg, seg_len);
         return;
     }
+    if (proto == IP_PROTO_UDP) {
+        const uint8_t *seg = ip + ihl;
+        uint32_t seg_len = total - ihl;
+        if (seg_len < 8) return;
+        uint16_t sport = be16(seg + 0);
+        uint16_t dport = be16(seg + 2);
+        uint16_t ulen  = be16(seg + 4);
+        if (ulen < 8 || ulen > seg_len) return;
+        dns_recv_packet(src_ip, sport, dport,
+                        seg + 8, (uint32_t)(ulen - 8));
+        return;
+    }
     unhandled++;
 }
 
@@ -317,3 +331,17 @@ int net_send_ipv4(uint32_t dst_ip, uint8_t proto,
     }
     return vnet_send(pkt, 14 + 20 + plen);
 }
+
+int net_send_udp(uint32_t dst_ip, uint16_t src_port, uint16_t dst_port,
+                 const uint8_t *payload, uint32_t plen) {
+    if (plen > 1500 - 20 - 8) return -1;
+    static uint8_t buf[1500];
+    /* UDP header (8 B) + payload */
+    wbe16(buf + 0, src_port);
+    wbe16(buf + 2, dst_port);
+    wbe16(buf + 4, (uint16_t)(8 + plen));
+    buf[6] = 0; buf[7] = 0;   /* checksum: 0 == disabled (legal for IPv4) */
+    for (uint32_t i = 0; i < plen; i++) buf[8 + i] = payload[i];
+    return net_send_ipv4(dst_ip, IP_PROTO_UDP, buf, 8 + plen);
+}
+

@@ -6,6 +6,7 @@
 #include "console.h"
 #include "str.h"
 #include "heap.h"
+#include "dns.h"
 
 /*
  * Tiny HTML browser. Pipeline:
@@ -640,9 +641,13 @@ void browser_navigate(const char *url) {
     parse_url(current_url, &pu);
     uint32_t ip;
     if (parse_ipv4(pu.host, &ip) != 0) {
-        set_status(0, "no DNS -- enter a numeric host");
-        item_count = 0;
-        return;
+        /* host is a name -- resolve via DNS through QEMU's slirp. */
+        set_status(0, "resolving...");
+        if (dns_lookup(pu.host, &ip, 750 /* 3 sec */) != 0) {
+            set_status(0, "DNS lookup failed");
+            item_count = 0;
+            return;
+        }
     }
 
     set_status(0, "fetching...");
@@ -651,6 +656,29 @@ void browser_navigate(const char *url) {
     int code = 0;
     int n = http_get(ip, pu.port, pu.host, pu.path,
                      body, MAX_BODY - 1, &code);
+    /* If the server force-redirected us to https, surface that
+     * clearly -- our HTTP/1.0 client can't follow it. */
+    if (n >= 0 && (code == 301 || code == 302) ) {
+        const char *p = (const char *)body;
+        for (int k = 0; k + 9 < n; k++) {
+            if ((p[k]=='L'||p[k]=='l') && (p[k+1]=='O'||p[k+1]=='o') &&
+                (p[k+2]=='C'||p[k+2]=='c') && (p[k+3]=='A'||p[k+3]=='a') &&
+                (p[k+4]=='T'||p[k+4]=='t') && (p[k+5]=='I'||p[k+5]=='i') &&
+                (p[k+6]=='O'||p[k+6]=='o') && (p[k+7]=='N'||p[k+7]=='n') &&
+                p[k+8]==':') {
+                int s = k + 9;
+                while (s < n && (p[s] == ' ' || p[s] == '\t')) s++;
+                if (s + 5 < n && p[s]=='h' && p[s+1]=='t' && p[s+2]=='t' &&
+                    p[s+3]=='p' && p[s+4]=='s') {
+                    kfree(body);
+                    set_status(code, "site forces HTTPS (no TLS in this OS)");
+                    item_count = 0;
+                    return;
+                }
+                break;
+            }
+        }
+    }
     if (n < 0) {
         kfree(body);
         char buf[40];

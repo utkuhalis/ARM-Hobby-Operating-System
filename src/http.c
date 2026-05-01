@@ -19,7 +19,7 @@ int http_get(uint32_t ip, uint16_t port,
              int *status_out) {
     if (status_out) *status_out = 0;
 
-    if (tcp_connect(ip, port, 750 /* 3 sec */) != 0) {
+    if (tcp_connect(ip, port, 2500 /* 10 sec */) != 0) {
         return -1;
     }
 
@@ -34,7 +34,7 @@ int http_get(uint32_t ip, uint16_t port,
         tcp_close(); return -2;
     }
 
-    int s = tcp_send(req, off, 750);
+    int s = tcp_send(req, off, 2500);
     if (s != (int)off) { tcp_close(); return -2; }
 
     /* Drain the response into a small ring; parse status line and
@@ -54,7 +54,7 @@ int http_get(uint32_t ip, uint16_t port,
     int    crlf_state = 0;  /* 0=normal, 1=\r, 2=\r\n, 3=\r\n\r */
 
     for (;;) {
-        int n = tcp_recv(buf, sizeof(buf), 750);
+        int n = tcp_recv(buf, sizeof(buf), 2500);
         if (n == 0) break;            /* peer closed */
         if (n == -1) { tcp_close(); return -4; }
         if (n < 0)   { tcp_close(); return -3; }
