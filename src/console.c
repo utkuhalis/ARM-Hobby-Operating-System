@@ -31,14 +31,12 @@ void console_putc(char c) {
         uart_putc('\n');
 #ifdef BOARD_HAS_RAMFB
         if (console_win) window_putc(console_win, '\n');
-        else             fb_console_putc('\n');
 #endif
         return;
     }
     uart_putc(c);
 #ifdef BOARD_HAS_RAMFB
     if (console_win) window_putc(console_win, c);
-    else             fb_console_putc(c);
 #endif
 }
 

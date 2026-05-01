@@ -27,6 +27,7 @@
 #include "fb_console.h"
 #include "window.h"
 #include "login.h"
+#include "boot_splash.h"
 #endif
 
 extern uint8_t _kernel_start[];
@@ -99,55 +100,69 @@ static void post(void) {
     uint32_t mhz_i  = (uint32_t)(tfreq / 1000000u);
     uint32_t mhz_d  = (uint32_t)((tfreq % 1000000u) / 100000u);
 
-    console_puts("\n");
-    console_puts("==========================================\n");
+    /* Serial copy of POST output (still useful for headless logs). */
+    console_puts("\n==========================================\n");
     console_printf(" HobbyBIOS v0.5    board: %s\n", sys_board_name());
     console_puts(" (c) 2026  Hobby ARM Operating System\n");
     console_puts("==========================================\n\n");
 
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(5, "Detecting CPU...");
+#endif
     delay_ms(120);
-    console_puts("Power-on self test\n");
-    console_puts("------------------\n");
-
-    delay_ms(150);
     console_printf("[ OK ] CPU      %s  (EL%u)\n", sys_cpu_name(midr), el);
     console_printf("                MIDR  0x%lx\n", midr);
     console_printf("                MPIDR 0x%lx\n", sys_read_mpidr());
     console_printf("                timer %u.%u MHz\n", mhz_i, mhz_d);
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(15, "Mapping memory...");
+#endif
+    delay_ms(120);
     console_printf("[ OK ] Memory   256 MiB\n");
     console_printf("                kernel 0x%08x..0x%08x\n", kstart, kend);
     console_printf("                stack  0x%08x..0x%08x\n", kend, stop);
 
-    delay_ms(150);
 #ifdef BOARD_HAS_RAMFB
+    boot_splash_step(25, "Bringing up display...");
     console_printf("[ OK ] Display  ramfb %ux%u XRGB8888\n",
                    (unsigned)FB_WIDTH, (unsigned)FB_HEIGHT);
 #else
     console_puts("[ -- ] Display  serial only\n");
 #endif
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(30, "Initializing storage...");
+#endif
+    delay_ms(120);
     console_puts("[ OK ] Storage  RAM fs 16 x 4 KiB (volatile)\n");
 
-    delay_ms(150);
+    delay_ms(120);
     console_printf("[ OK ] Console  PL011 UART @ 0x%lx\n", (uint64_t)UART_BASE);
 
-    delay_ms(150);
 #ifdef BOARD_HAS_GIC
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(40, "Enabling MMU + caches...");
+#endif
+    delay_ms(120);
     console_puts("[ OK ] MMU      4 KiB granule, 39-bit VA, I+D caches\n");
 
-    delay_ms(150);
+    delay_ms(120);
     console_puts("[ OK ] Heap     kalloc/kfree, 2 MiB pool\n");
 
-    delay_ms(150);
+    delay_ms(120);
     console_printf("[ OK ] Sched    cooperative, %u Hz tick\n", timer_hz());
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(55, "Configuring interrupts...");
+#endif
+    delay_ms(120);
     console_puts("[ OK ] IRQ      GIC v2 (distributor + CPU iface)\n");
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(65, "Probing input devices...");
+#endif
+    delay_ms(120);
     int kbd_irq = vinput_irq_number();
     if (kbd_irq >= 0) {
         console_printf("[ OK ] Kbd      virtio-input @ IRQ %d  (mmio v%u)\n",
@@ -156,7 +171,7 @@ static void post(void) {
         console_puts("[ -- ] Kbd      no virtio-input found\n");
     }
 
-    delay_ms(150);
+    delay_ms(120);
     int mouse_irq = vmouse_irq_number();
     if (mouse_irq >= 0) {
         console_printf("[ OK ] Mouse    virtio-mouse @ IRQ %d\n", mouse_irq);
@@ -164,7 +179,10 @@ static void post(void) {
         console_puts("[ -- ] Mouse    no virtio-mouse found\n");
     }
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(80, "Mounting filesystem...");
+#endif
+    delay_ms(120);
     if (vblk_present()) {
         console_printf("[ OK ] Block    virtio-blk @ IRQ %d  %lu sectors\n",
                        vblk_irq_number(),
@@ -199,7 +217,10 @@ static void post(void) {
         console_puts("[ -- ] Block    no virtio-blk found\n");
     }
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(90, "Bringing up network...");
+#endif
+    delay_ms(120);
     if (vnet_present()) {
         const uint8_t *m = vnet_mac();
         console_printf("[ OK ] Net      virtio-net @ IRQ %d\n", vnet_irq_number());
@@ -212,7 +233,10 @@ static void post(void) {
     console_puts("[ -- ] IRQ      polling only on this board\n");
 #endif
 
-    delay_ms(150);
+#ifdef BOARD_HAS_RAMFB
+    boot_splash_step(100, "Almost there...");
+#endif
+    delay_ms(120);
 #ifdef BOARD_HAS_GIC
     /* give secondaries a chance to register before we report the count */
     delay_ms(40);
@@ -863,6 +887,7 @@ void kernel_main(void) {
         fb_console_init(BG_COLOR, FG_COLOR);
         window_init();
         desktop_init();
+        boot_splash_init();
         /* No windows are pre-created at boot. Each dock icon lazily
          * builds its window the first time the user clicks it, so a
          * fresh boot lands on a clean desktop. */
@@ -881,6 +906,8 @@ void kernel_main(void) {
      * Terminal dock icon (launch_terminal attaches the console then). */
 
 #if defined(BOARD_HAS_RAMFB) && defined(BOARD_HAS_GIC)
+    /* Splash off, login on. */
+    boot_splash_done();
     /* Gate the desktop behind a graphical login. Returns only after
      * accounts.c accepts a username/password. */
     login_run();

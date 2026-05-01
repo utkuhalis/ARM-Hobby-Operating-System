@@ -30,7 +30,7 @@ C_SRCS  := $(CORE_C) $(SRC)/exceptions.c $(SRC)/gic.c $(SRC)/timer.c \
            $(SRC)/mmu.c \
            $(SRC)/task.c $(SRC)/syscall.c $(SRC)/user_program.c \
            $(SRC)/fb.c $(SRC)/fb_console.c $(SRC)/window.c \
-           $(SRC)/desktop.c $(SRC)/login.c \
+           $(SRC)/desktop.c $(SRC)/login.c $(SRC)/boot_splash.c \
            $(SRC)/fw_cfg.c $(SRC)/font.c
 S_SRCS  := $(SRC)/boot.S $(SRC)/vectors.S $(SRC)/switch.S
 else
