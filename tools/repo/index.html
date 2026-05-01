@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head><title>Hobby ARM OS Repo</title></head>
+  <body>
+    <h1>Hobby ARM OS Package Repository</h1>
+    <p>This is the Docker-served repo the on-device package manager
+       talks to. The HTML page you are reading was rendered by the
+       built-in browser running on a hand-rolled AArch64 kernel
+       through plain HTTP/1.0 -- no TLS, no JavaScript, no images.</p>
+
+    <h2>Open-source packages</h2>
+    <ul>
+      <li><a href="/packages/hello/manifest.json">hello</a> &mdash; one-shot greeting</li>
+      <li><a href="/packages/counter/manifest.json">counter</a> &mdash; prints 1..5</li>
+      <li><a href="/packages/clock/manifest.json">clock</a> &mdash; tick-tock demo</li>
+      <li><a href="/packages/files/manifest.json">files</a> &mdash; ram-fs lister</li>
+      <li><a href="/packages/sysinfo/manifest.json">sysinfo</a> &mdash; cpu/memory dump</li>
+      <li><a href="/packages/load/manifest.json">load</a> &mdash; scheduler exerciser</li>
+    </ul>
+
+    <h2>Games</h2>
+    <ul>
+      <li><a href="/packages/minesweeper/manifest.json">minesweeper</a> &mdash; 10x10, mouse-driven</li>
+      <li><a href="/packages/sudoku/manifest.json">sudoku</a> &mdash; click + type</li>
+    </ul>
+
+    <h2>Closed-source samples</h2>
+    <ul>
+      <li><a href="/packages/weather/manifest.json">weather</a> &mdash; proprietary stub</li>
+    </ul>
+
+    <hr>
+    <p>To install a package from inside the OS:
+       <i>pkg install &lt;name&gt;</i> from the terminal,
+       or click an icon in the App Store window.</p>
+
+    <p><a href="/index.json">View raw index.json</a></p>
+  </body>
+</html>

@@ -13,13 +13,16 @@
 
 #define WIN_KIND_TEXT   0
 #define WIN_KIND_WIDGET 1
+#define WIN_KIND_CUSTOM 2   /* the window's content is painted via
+                             * a callback the owner installs */
 
 #define WIDGET_LABEL      0
 #define WIDGET_BUTTON     1
 #define WIDGET_TEXT_INPUT 2
+#define WIDGET_CANVAS     3   /* custom-painted region with click cb */
 
-#define WIDGET_TEXT_MAX 24
-#define WIDGET_INPUT_MAX 64
+#define WIDGET_TEXT_MAX 64
+#define WIDGET_INPUT_MAX 256
 #define WIN_MAX_WIDGETS 64
 
 struct window;
@@ -36,6 +39,15 @@ typedef struct widget {
     int   input_len;
     int   input_focus;
     void (*on_submit)(struct window *win, struct widget *self);
+
+    /* WIDGET_CANVAS hooks. The widget owns its (x,y,w,h) rect inside
+     * the window content area; canvas_paint paints into framebuffer
+     * space (origin already translated for the caller's convenience). */
+    void *canvas_ctx;
+    void (*canvas_paint)(struct window *win, struct widget *self,
+                         int abs_x, int abs_y);
+    void (*canvas_click)(struct window *win, struct widget *self,
+                         int local_x, int local_y, int btn);
 } widget_t;
 
 typedef struct window {
@@ -55,6 +67,13 @@ typedef struct window {
     /* widget tree (used when kind == WIN_KIND_WIDGET) */
     widget_t widgets[WIN_MAX_WIDGETS];
     int      widget_count;
+    /* WIN_KIND_CUSTOM hooks: paint_content owns the content area
+     * (everything below the title bar); click_content is called
+     * with window-local coords on a left click. user_data is owner-
+     * controlled context. */
+    void   (*paint_content)(struct window *w, int cx, int cy, int cw, int ch);
+    void   (*click_content)(struct window *w, int local_x, int local_y, int btn);
+    void    *user_data;
     /* Minimize / open / close animation state.
      * anim_t advances toward anim_target each compose frame; the
      * window is rendered scaled around its center by anim_t/256. */
@@ -76,6 +95,10 @@ widget_t *window_add_button(window_t *w, int x, int y, int width,
 widget_t *window_add_text_input(window_t *w, int x, int y, int width,
                                 const char *placeholder,
                                 void (*on_submit)(window_t *, widget_t *));
+widget_t *window_add_canvas    (window_t *w, int x, int y, int width, int height,
+                                void *ctx,
+                                void (*paint)(window_t *, widget_t *, int abs_x, int abs_y),
+                                void (*click)(window_t *, widget_t *, int local_x, int local_y, int btn));
 const char *widget_input_text(widget_t *g);
 void        widget_input_clear(widget_t *g);
 void     window_close(window_t *w);

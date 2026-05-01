@@ -70,6 +70,9 @@ window_t *window_create(const char *title, int x, int y) {
     w->anim_target = 256;
     w->minimized   = 0;
     w->closing     = 0;
+    w->paint_content = 0;
+    w->click_content = 0;
+    w->user_data     = 0;
     for (int r = 0; r < WIN_ROWS; r++)
         for (int c = 0; c < WIN_COLS; c++)
             w->text[r][c] = ' ';
@@ -98,6 +101,9 @@ window_t *window_create_widget(const char *title, int x, int y, int w, int h) {
     win->anim_target = 256;
     win->minimized   = 0;
     win->closing     = 0;
+    win->paint_content = 0;
+    win->click_content = 0;
+    win->user_data     = 0;
     if (focus_idx < 0) focus_idx = window_n;
     window_n++;
     return win;
@@ -151,6 +157,31 @@ widget_t *window_add_text_input(window_t *w, int x, int y, int width,
     g->input[0]  = '\0';
     g->input_len = 0;
     g->input_focus = 0;
+    g->canvas_ctx = 0;
+    g->canvas_paint = 0;
+    g->canvas_click = 0;
+    return g;
+}
+
+widget_t *window_add_canvas(window_t *w, int x, int y, int width, int height,
+                            void *ctx,
+                            void (*paint)(window_t *, widget_t *, int, int),
+                            void (*click)(window_t *, widget_t *, int, int, int)) {
+    if (!w || w->widget_count >= WIN_MAX_WIDGETS) return NULL;
+    widget_t *g = &w->widgets[w->widget_count++];
+    g->type = WIDGET_CANVAS;
+    g->x = x; g->y = y;
+    g->w = width; g->h = height;
+    g->pressed = 0;
+    g->on_click = 0;
+    g->on_submit = 0;
+    g->text[0] = 0;
+    g->input[0] = 0;
+    g->input_len = 0;
+    g->input_focus = 0;
+    g->canvas_ctx = ctx;
+    g->canvas_paint = paint;
+    g->canvas_click = click;
     return g;
 }
 
@@ -305,7 +336,9 @@ static widget_t *widget_at(window_t *w, int gx, int gy) {
     int local_y = gy - w->y - WIN_TITLE_H;
     for (int i = 0; i < w->widget_count; i++) {
         widget_t *g = &w->widgets[i];
-        if (g->type != WIDGET_BUTTON && g->type != WIDGET_TEXT_INPUT) continue;
+        if (g->type != WIDGET_BUTTON &&
+            g->type != WIDGET_TEXT_INPUT &&
+            g->type != WIDGET_CANVAS) continue;
         if (local_x >= g->x && local_x < g->x + g->w &&
             local_y >= g->y && local_y < g->y + g->h) {
             return g;
@@ -386,6 +419,13 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
             } else if (point_in_minimize_button(&windows[hit], (int)mx, (int)my)) {
                 window_minimize(&windows[hit]);
                 clear_text_input_focus();
+            } else if (windows[hit].kind == WIN_KIND_CUSTOM &&
+                       windows[hit].click_content &&
+                       (int)my >= windows[hit].y + WIN_TITLE_H) {
+                int lx = (int)mx - (windows[hit].x + WIN_BORDER);
+                int ly = (int)my - (windows[hit].y + WIN_TITLE_H);
+                windows[hit].click_content(&windows[hit], lx, ly, 1);
+                clear_text_input_focus();
             } else {
                 widget_t *g = widget_at(&windows[hit], (int)mx, (int)my);
                 if (g && g->type == WIDGET_BUTTON) {
@@ -395,6 +435,13 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
                     clear_text_input_focus();
                     focused_input = g;
                     g->input_focus = 1;
+                } else if (g && g->type == WIDGET_CANVAS) {
+                    clear_text_input_focus();
+                    if (g->canvas_click) {
+                        int lx = (int)mx - (windows[hit].x + WIN_BORDER + g->x);
+                        int ly = (int)my - (windows[hit].y + WIN_TITLE_H + g->y);
+                        g->canvas_click(&windows[hit], g, lx, ly, 1);
+                    }
                 } else if (point_in_titlebar(&windows[hit], (int)mx, (int)my)) {
                     drag_active = 1;
                     drag_window = hit;
@@ -459,6 +506,11 @@ static int draw_string_in_window(int wx, int wy, const char *s, uint32_t color,
 static void draw_widget(window_t *w, widget_t *g) {
     int wx = w->x + WIN_BORDER + g->x;
     int wy = w->y + WIN_TITLE_H + g->y;
+
+    if (g->type == WIDGET_CANVAS) {
+        if (g->canvas_paint) g->canvas_paint(w, g, wx, wy);
+        return;
+    }
 
     if (g->type == WIDGET_TEXT_INPUT) {
         uint32_t bg     = 0x000a0e16u;
@@ -586,6 +638,10 @@ static void paint_window(window_t *w) {
         for (int i = 0; i < w->widget_count; i++) {
             draw_widget(w, &w->widgets[i]);
         }
+        return;
+    }
+    if (w->kind == WIN_KIND_CUSTOM && w->paint_content) {
+        w->paint_content(w, cx, cy, cw, ch);
         return;
     }
 

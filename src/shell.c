@@ -21,6 +21,7 @@
 #endif
 #ifdef BOARD_HAS_RAMFB
 #include "wallpaper.h"
+#include "browser.h"
 #endif
 
 #define LINE_MAX  256
@@ -61,6 +62,7 @@ static void cmd_elfinfo(int argc, char **argv);
 static void cmd_crashtest(int argc, char **argv);
 #ifdef BOARD_HAS_RAMFB
 static void cmd_wallpaper(int argc, char **argv);
+static void cmd_browse(int argc, char **argv);
 #endif
 #ifdef BOARD_HAS_GIC
 static void cmd_mouse(int argc, char **argv);
@@ -102,6 +104,7 @@ static const struct cmd cmds[] = {
     {"crashtest", cmd_crashtest, "trigger a crash modal (debug)"},
 #ifdef BOARD_HAS_RAMFB
     {"wallpaper", cmd_wallpaper, "wallpaper list | set <N>"},
+    {"browse",  cmd_browse,    "open the browser at <url>"},
 #endif
 #ifdef BOARD_HAS_GIC
     {"mouse",   cmd_mouse,   "drive the desktop cursor: mouse <up|down|left|right|click|to X Y> [N]"},
@@ -569,6 +572,13 @@ static void cmd_wallpaper(int argc, char **argv) {
         return;
     }
     console_puts("usage: wallpaper list | set <N>\n");
+}
+
+extern int kernel_launch_builtin(const char *name);
+static void cmd_browse(int argc, char **argv) {
+    kernel_launch_builtin("Browser");
+    if (argc >= 2) browser_navigate(argv[1]);
+    else           browser_navigate("about:home");
 }
 #endif
 

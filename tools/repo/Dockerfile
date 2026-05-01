@@ -12,6 +12,7 @@ FROM python:3.12-alpine
 
 WORKDIR /repo
 COPY index.json    /repo/
+COPY index.html    /repo/
 COPY packages      /repo/packages
 COPY serve.py      /repo/
 

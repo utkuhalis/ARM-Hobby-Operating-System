@@ -514,6 +514,9 @@ static void build_calculator_window(void) {
 /* ---------------- Browser ---------------- */
 
 #include "http.h"
+#include "browser.h"
+#define LEGACY_BROWSER 0
+#if LEGACY_BROWSER
 
 static void browser_go_cb(window_t *w, widget_t *self) {
     (void)w; (void)self;
@@ -613,6 +616,7 @@ static void build_browser_window(void) {
     window_add_button(win_browser, 396, 18, 60, "Go", browser_go_cb);
     browser_status = window_add_label(win_browser, 10, 50, 520, "ready");
 }
+#endif /* LEGACY_BROWSER */
 
 /* ---------------- Calendar ---------------- */
 
@@ -744,7 +748,7 @@ static void launch_store(void) {
     show_window(win_store);
 }
 static void launch_browser(void) {
-    if (!win_browser) build_browser_window();
+    if (!win_browser) win_browser = browser_window();
     show_window(win_browser);
 }
 static void launch_calendar(void) {
