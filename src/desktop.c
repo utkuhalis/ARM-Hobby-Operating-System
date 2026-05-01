@@ -317,12 +317,33 @@ static void paint_dock(void) {
 
 struct file_icon {
     int      used;
-    char     name[32];          /* fs file name */
+    int      is_folder;
+    int      selected;
+    char     name[32];          /* fs file name (folders end with '/') */
     int      x, y;
     uint32_t color;
 };
 
 static struct file_icon ficons[MAX_FILE_ICONS];
+
+/* multi-select drag rectangle */
+static int       sel_drag_active;
+static int       sel_drag_x0, sel_drag_y0;
+static int       sel_drag_x1, sel_drag_y1;
+
+/* double-click detection */
+static int       last_click_idx = -1;
+static uint64_t  last_click_tick;
+
+/* right-click context menu */
+#define MENU_ITEMS 3
+static const char *menu_labels[MENU_ITEMS] = {
+    "New Folder", "New File", "Refresh"
+};
+static int       menu_visible;
+static int       menu_x, menu_y;
+static int       menu_w, menu_h;
+static int       menu_hover = -1;
 
 /* Drag state for desktop icons. */
 static int dicon_drag_idx = -1;
@@ -337,6 +358,11 @@ static int icon_visible_area(int y) {
     /* Icons live between the top bar and the dock. */
     return y >= DESKTOP_TOPBAR_H + 4
         && y <  (int)FB_HEIGHT - DESKTOP_DOCK_H - FICON_SIZE - FICON_LABEL_H;
+}
+
+static int name_ends_slash(const char *s) {
+    int n = 0; while (s[n]) n++;
+    return n > 0 && s[n - 1] == '/';
 }
 
 static struct file_icon *find_or_alloc_icon(const char *name) {
@@ -359,11 +385,17 @@ static struct file_icon *find_or_alloc_icon(const char *name) {
             }
             ficons[i].name[k] = 0;
             ficons[i].color = color_for(name);
+            ficons[i].is_folder = name_ends_slash(name);
+            ficons[i].selected = 0;
             ficons[i].x = -1;  /* mark unplaced */
             return &ficons[i];
         }
     }
     return 0;
+}
+
+static void clear_selection(void) {
+    for (int i = 0; i < MAX_FILE_ICONS; i++) ficons[i].selected = 0;
 }
 
 /* Re-derive the icon set from the fs each call. Preserves positions
@@ -415,19 +447,46 @@ static void paint_file_icons(void) {
         if (!ficons[i].used) continue;
         struct file_icon *it = &ficons[i];
 
-        /* page background */
-        fb_fill_rect((uint32_t)it->x, (uint32_t)it->y,
-                     FICON_SIZE, FICON_SIZE, 0x00ffffff);
-        fb_fill_rect((uint32_t)it->x + 1, (uint32_t)it->y + 1,
-                     FICON_SIZE - 2, FICON_SIZE - 2, 0x00f0f4ff);
-        /* folded corner */
-        fb_fill_rect((uint32_t)(it->x + FICON_SIZE - 12),
-                     (uint32_t)it->y, 12, 12, it->color);
-        /* lines on the page */
-        for (int row = 18; row < FICON_SIZE - 6; row += 6) {
-            fb_fill_rect((uint32_t)(it->x + 6),
-                         (uint32_t)(it->y + row),
-                         FICON_SIZE - 12, 1, 0x00b0b8c8);
+        /* selection halo */
+        if (it->selected) {
+            fb_fill_rect((uint32_t)(it->x - 4), (uint32_t)(it->y - 4),
+                         FICON_SIZE + 8, FICON_SIZE + 8, 0x4a90e2ffu & 0x40ffffffu);
+            fb_fill_rect((uint32_t)(it->x - 4), (uint32_t)(it->y - 4),
+                         FICON_SIZE + 8, 2, 0x004a90e2u);
+            fb_fill_rect((uint32_t)(it->x - 4), (uint32_t)(it->y + FICON_SIZE + 2),
+                         FICON_SIZE + 8, 2, 0x004a90e2u);
+            fb_fill_rect((uint32_t)(it->x - 4), (uint32_t)(it->y - 4),
+                         2, FICON_SIZE + 8, 0x004a90e2u);
+            fb_fill_rect((uint32_t)(it->x + FICON_SIZE + 2), (uint32_t)(it->y - 4),
+                         2, FICON_SIZE + 8, 0x004a90e2u);
+        }
+
+        if (it->is_folder) {
+            /* folder shape: a tab + body */
+            uint32_t body = 0x00ddc070u;   /* warm folder yellow */
+            uint32_t edge = 0x00b89c50u;
+            int tab_w = FICON_SIZE / 2;
+            fb_fill_rect((uint32_t)it->x, (uint32_t)it->y + 6,
+                         (uint32_t)tab_w, 12, body);
+            fb_fill_rect((uint32_t)it->x, (uint32_t)it->y + 12,
+                         FICON_SIZE, FICON_SIZE - 12, body);
+            fb_fill_rect((uint32_t)it->x, (uint32_t)it->y + 6,
+                         FICON_SIZE, 1, edge);
+            fb_fill_rect((uint32_t)it->x, (uint32_t)(it->y + FICON_SIZE - 1),
+                         FICON_SIZE, 1, edge);
+        } else {
+            /* page background */
+            fb_fill_rect((uint32_t)it->x, (uint32_t)it->y,
+                         FICON_SIZE, FICON_SIZE, 0x00ffffff);
+            fb_fill_rect((uint32_t)it->x + 1, (uint32_t)it->y + 1,
+                         FICON_SIZE - 2, FICON_SIZE - 2, 0x00f0f4ff);
+            fb_fill_rect((uint32_t)(it->x + FICON_SIZE - 12),
+                         (uint32_t)it->y, 12, 12, it->color);
+            for (int row = 18; row < FICON_SIZE - 6; row += 6) {
+                fb_fill_rect((uint32_t)(it->x + 6),
+                             (uint32_t)(it->y + row),
+                             FICON_SIZE - 12, 1, 0x00b0b8c8);
+            }
         }
 
         /* label centered below */
@@ -436,12 +495,56 @@ static void paint_file_icons(void) {
         if (label_len > max_chars) label_len = max_chars;
         char label[32];
         for (int k = 0; k < label_len; k++) label[k] = it->name[k];
+        if (label_len > 0 && label[label_len - 1] == '/') label_len--;
         label[label_len] = 0;
         uint32_t lw = fb_text_ui_width(label);
         int label_x = it->x + FICON_SIZE / 2 - (int)lw / 2;
         fb_draw_string_ui((uint32_t)label_x,
                           (uint32_t)(it->y + FICON_SIZE + 4),
                           label, TOP_FG);
+    }
+
+    /* multi-select drag rectangle */
+    if (sel_drag_active) {
+        int x0 = sel_drag_x0 < sel_drag_x1 ? sel_drag_x0 : sel_drag_x1;
+        int y0 = sel_drag_y0 < sel_drag_y1 ? sel_drag_y0 : sel_drag_y1;
+        int x1 = sel_drag_x0 < sel_drag_x1 ? sel_drag_x1 : sel_drag_x0;
+        int y1 = sel_drag_y0 < sel_drag_y1 ? sel_drag_y1 : sel_drag_y0;
+        int w = x1 - x0;
+        int h = y1 - y0;
+        if (w < 0) w = 0;
+        if (h < 0) h = 0;
+        /* translucent fill via 1px stripes -- our fb_fill_rect is opaque */
+        for (int yy = y0; yy < y1; yy += 2) {
+            fb_fill_rect((uint32_t)x0, (uint32_t)yy,
+                         (uint32_t)w, 1, 0x002c4a78u);
+        }
+        fb_fill_rect((uint32_t)x0, (uint32_t)y0, (uint32_t)w, 1, 0x004a90e2u);
+        fb_fill_rect((uint32_t)x0, (uint32_t)y1, (uint32_t)w, 1, 0x004a90e2u);
+        fb_fill_rect((uint32_t)x0, (uint32_t)y0, 1, (uint32_t)h, 0x004a90e2u);
+        fb_fill_rect((uint32_t)x1, (uint32_t)y0, 1, (uint32_t)h, 0x004a90e2u);
+    }
+
+    /* context menu */
+    if (menu_visible) {
+        fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y,
+                     (uint32_t)menu_w, (uint32_t)menu_h, 0x00f4f6faff & 0xffffffu);
+        fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y, (uint32_t)menu_w, 1, 0x00141a26u);
+        fb_fill_rect((uint32_t)menu_x, (uint32_t)(menu_y + menu_h - 1),
+                     (uint32_t)menu_w, 1, 0x00141a26u);
+        fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y, 1, (uint32_t)menu_h, 0x00141a26u);
+        fb_fill_rect((uint32_t)(menu_x + menu_w - 1), (uint32_t)menu_y,
+                     1, (uint32_t)menu_h, 0x00141a26u);
+        int row_h = 30;
+        for (int i = 0; i < MENU_ITEMS; i++) {
+            int ry = menu_y + 1 + i * row_h;
+            if (i == menu_hover) {
+                fb_fill_rect((uint32_t)(menu_x + 1), (uint32_t)ry,
+                             (uint32_t)(menu_w - 2), (uint32_t)row_h, 0x00cce5ffu);
+            }
+            fb_draw_string_ui((uint32_t)(menu_x + 14), (uint32_t)(ry + 6),
+                              menu_labels[i], 0x00141a26u);
+        }
     }
 }
 
@@ -484,6 +587,35 @@ static int hits_icon(struct dock_item *it, int32_t mx, int32_t my) {
         && my >= it->y && my < it->y + ICON_SIZE;
 }
 
+/* Pick a unique fs name with the given prefix. Returns 1 on success. */
+static int unique_fs_name(const char *prefix, char *out, int outsz, int folder) {
+    for (int n = 1; n < 50; n++) {
+        int o = 0;
+        for (int i = 0; prefix[i] && o + 1 < outsz; i++) out[o++] = prefix[i];
+        out[o++] = '-';
+        if (n >= 10) out[o++] = (char)('0' + n / 10);
+        out[o++] = (char)('0' + n % 10);
+        if (folder) out[o++] = '/';
+        out[o] = 0;
+        if (!fs_find(out)) return 1;
+    }
+    return 0;
+}
+
+static void menu_action(int idx) {
+    char name[32];
+    if (idx == 0) {
+        if (unique_fs_name("folder", name, sizeof(name), 1)) {
+            (void)fs_write(name, "", 0);
+        }
+    } else if (idx == 1) {
+        if (unique_fs_name("file", name, sizeof(name), 0)) {
+            (void)fs_write(name, "", 0);
+        }
+    }
+    /* idx == 2 (Refresh): no-op; sync_icons_from_fs runs every frame */
+}
+
 int desktop_handle_pointer(int32_t mx, int32_t my,
                            int buttons, int prev_buttons) {
     /* Top bar swallows clicks but does no work. */
@@ -491,33 +623,98 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
         return 1;
     }
 
-    int left = buttons & 0x1;
-    int prev_left = prev_buttons & 0x1;
-    int press   = left && !prev_left;
-    int release = !left && prev_left;
+    int left  = buttons & 0x1;
+    int right = buttons & 0x2;
+    int prev_left  = prev_buttons & 0x1;
+    int prev_right = prev_buttons & 0x2;
+    int press      = left  && !prev_left;
+    int release    = !left && prev_left;
+    int rpress     = right && !prev_right;
 
     int dock_top = (int)FB_HEIGHT - DESKTOP_DOCK_H;
 
+    /* If the menu is visible, swallow clicks targeted at it first. */
+    if (menu_visible) {
+        int row_h = 30;
+        if (mx >= menu_x && mx < menu_x + menu_w &&
+            my >= menu_y && my < menu_y + menu_h) {
+            menu_hover = (int)((my - menu_y - 1) / row_h);
+            if (menu_hover < 0) menu_hover = 0;
+            if (menu_hover >= MENU_ITEMS) menu_hover = MENU_ITEMS - 1;
+            if (release) {
+                menu_action(menu_hover);
+                menu_visible = 0;
+                menu_hover = -1;
+            }
+            return 1;
+        } else if (press || rpress) {
+            menu_visible = 0;
+            menu_hover = -1;
+            /* fall through so the click that dismissed the menu is
+             * still processed normally below */
+        } else {
+            menu_hover = -1;
+        }
+    }
+
     /* ---- desktop-area: file icons ---- */
     if (my >= DESKTOP_TOPBAR_H && my < dock_top) {
+        if (rpress) {
+            int x = (int)mx, y = (int)my;
+            menu_w = 180;
+            menu_h = MENU_ITEMS * 30 + 2;
+            if (x + menu_w > (int)FB_WIDTH)  x = (int)FB_WIDTH  - menu_w - 4;
+            if (y + menu_h > dock_top)       y = dock_top - menu_h - 4;
+            menu_x = x; menu_y = y;
+            menu_visible = 1;
+            menu_hover = -1;
+            return 1;
+        }
+
         if (press) {
+            int hovered = -1;
             for (int i = 0; i < MAX_FILE_ICONS; i++) {
                 if (!ficons[i].used) continue;
-                if (hits_ficon(&ficons[i], mx, my)) {
-                    dicon_press_idx     = i;
-                    dicon_press_x       = (int)mx;
-                    dicon_press_y       = (int)my;
-                    dicon_drag_off_x    = (int)mx - ficons[i].x;
-                    dicon_drag_off_y    = (int)my - ficons[i].y;
-                    dicon_drag_started  = 0;
-                    return 1;
-                }
+                if (hits_ficon(&ficons[i], mx, my)) { hovered = i; break; }
             }
-            return 0;  /* clicked empty desktop -> let windows handle it */
+            int shift = 0;
+            (void)shift;  /* keyboard shift state isn't tracked here yet */
+            if (hovered >= 0) {
+                /* macOS-style: single click selects (and deselects others
+                 * unless already selected). Double click opens. */
+                if (!ficons[hovered].selected) {
+                    clear_selection();
+                    ficons[hovered].selected = 1;
+                }
+                /* double-click detect */
+                uint64_t now = timer_ticks();
+                if (last_click_idx == hovered &&
+                    (now - last_click_tick) < (uint64_t)(timer_hz() / 2)) {
+                    open_viewer(ficons[hovered].name);
+                    last_click_idx = -1;
+                } else {
+                    last_click_idx = hovered;
+                    last_click_tick = now;
+                }
+                /* prep for drag */
+                dicon_press_idx     = hovered;
+                dicon_press_x       = (int)mx;
+                dicon_press_y       = (int)my;
+                dicon_drag_off_x    = (int)mx - ficons[hovered].x;
+                dicon_drag_off_y    = (int)my - ficons[hovered].y;
+                dicon_drag_started  = 0;
+                return 1;
+            } else {
+                /* empty area: clear selection + start rubber-band */
+                clear_selection();
+                sel_drag_active = 1;
+                sel_drag_x0 = sel_drag_x1 = (int)mx;
+                sel_drag_y0 = sel_drag_y1 = (int)my;
+                return 0;  /* let windows still handle if user is on top of them */
+            }
         }
 
         if (left && dicon_press_idx >= 0) {
-            /* track for drag start */
             int dx = (int)mx - dicon_press_x;
             int dy = (int)my - dicon_press_y;
             if (!dicon_drag_started &&
@@ -540,20 +737,41 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
             return 1;
         }
 
+        if (left && sel_drag_active) {
+            sel_drag_x1 = (int)mx;
+            sel_drag_y1 = (int)my;
+            int x0 = sel_drag_x0 < sel_drag_x1 ? sel_drag_x0 : sel_drag_x1;
+            int y0 = sel_drag_y0 < sel_drag_y1 ? sel_drag_y0 : sel_drag_y1;
+            int x1 = sel_drag_x0 < sel_drag_x1 ? sel_drag_x1 : sel_drag_x0;
+            int y1 = sel_drag_y0 < sel_drag_y1 ? sel_drag_y1 : sel_drag_y0;
+            for (int i = 0; i < MAX_FILE_ICONS; i++) {
+                if (!ficons[i].used) continue;
+                int ix0 = ficons[i].x;
+                int iy0 = ficons[i].y;
+                int ix1 = ix0 + FICON_SIZE;
+                int iy1 = iy0 + FICON_SIZE;
+                int overlap = !(ix1 < x0 || ix0 > x1 ||
+                                iy1 < y0 || iy0 > y1);
+                ficons[i].selected = overlap ? 1 : 0;
+            }
+            return 1;
+        }
+
         if (release && dicon_press_idx >= 0) {
             int idx = dicon_press_idx;
             int was_drag = dicon_drag_started;
             dicon_press_idx    = -1;
             dicon_drag_idx     = -1;
             dicon_drag_started = 0;
-            if (!was_drag) {
-                /* simple click on icon -> open viewer */
-                open_viewer(ficons[idx].name);
-            }
+            (void)idx; (void)was_drag;
+            return 1;
+        }
+        if (release && sel_drag_active) {
+            sel_drag_active = 0;
             return 1;
         }
 
-        (void)icon_visible_area;  /* reserved for folder-drop later */
+        (void)icon_visible_area;
         return 0;
     }
 
