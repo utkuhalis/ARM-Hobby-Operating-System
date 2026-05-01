@@ -10,8 +10,8 @@
  * reach pkg_run_by_name.
  */
 
-#define DESKTOP_TOPBAR_H 28
-#define DESKTOP_DOCK_H   84
+#define DESKTOP_TOPBAR_H 32
+#define DESKTOP_DOCK_H   100
 
 void desktop_init(void);
 

@@ -28,10 +28,9 @@ static int hits(int mx, int my, int x, int y, int w, int h) {
 static void draw_field(int x, int y, int w, int h,
                        const char *label, const char *text,
                        int focused, int is_password) {
-    fb_draw_string((uint32_t)x, (uint32_t)(y - 18), label, DIM, 1);
+    fb_draw_string_ui((uint32_t)x, (uint32_t)(y - 22), label, DIM);
     fb_fill_rect((uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h,
                  focused ? FIELD_FOCUS : FIELD_BG);
-    /* border, double thickness when focused */
     uint32_t bc = focused ? ACCENT : DIM;
     fb_fill_rect((uint32_t)x, (uint32_t)y, (uint32_t)w, 1, bc);
     fb_fill_rect((uint32_t)x, (uint32_t)(y + h - 1), (uint32_t)w, 1, bc);
@@ -49,16 +48,17 @@ static void draw_field(int x, int y, int w, int h,
         n++;
     }
     rendered[n] = 0;
-    fb_draw_string((uint32_t)(x + 10), (uint32_t)(y + (h - 16) / 2),
-                   rendered, FIELD_FG, 2);
+    int lh = (int)fb_text_ui_line_height();
+    fb_draw_string_ui((uint32_t)(x + 12), (uint32_t)(y + (h - lh) / 2),
+                      rendered, FIELD_FG);
 
     /* blinking caret when focused */
     if (focused) {
         uint64_t t = timer_ticks();
         if ((t / (timer_hz() / 2)) & 1) {
-            int caret_x = x + 10 + n * 16;
-            fb_fill_rect((uint32_t)caret_x, (uint32_t)(y + (h - 18) / 2),
-                         2, 18, FIELD_FG);
+            int caret_x = x + 12 + (int)fb_text_ui_width(rendered);
+            fb_fill_rect((uint32_t)caret_x, (uint32_t)(y + (h - lh) / 2),
+                         2, (uint32_t)lh, FIELD_FG);
         }
     }
 }
@@ -68,12 +68,11 @@ static void draw_button(int x, int y, int w, int h,
     uint32_t bg = pressed ? 0x00164f99u
                 : hovered ? ACCENT_HI : ACCENT;
     fb_fill_rect((uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h, bg);
-    int label_len = 0; while (label[label_len]) label_len++;
-    int lw = label_len * 16;
+    int lw = (int)fb_text_ui_width(label);
     int lx = x + (w - lw) / 2;
-    int ly = y + (h - 16) / 2;
-    fb_draw_string((uint32_t)lx, (uint32_t)(ly + (pressed ? 1 : 0)),
-                   label, 0xffffffffu, 2);
+    int ly = y + (h - (int)fb_text_ui_line_height()) / 2;
+    fb_draw_string_ui((uint32_t)lx, (uint32_t)(ly + (pressed ? 1 : 0)),
+                      label, 0xffffffffu);
 }
 
 static void paint_screen(const char *user, int ulen,
@@ -94,10 +93,10 @@ static void paint_screen(const char *user, int ulen,
     fb_fill_rect((uint32_t)cx, (uint32_t)cy, (uint32_t)cw, 4, ACCENT);
 
     /* header */
-    fb_draw_string((uint32_t)(cx + 24), (uint32_t)(cy + 26),
-                   "Welcome to Hobby ARM OS", CARD_FG, 2);
-    fb_draw_string((uint32_t)(cx + 24), (uint32_t)(cy + 56),
-                   "Sign in to continue", DIM, 1);
+    fb_draw_string_hd((uint32_t)(cx + 24), (uint32_t)(cy + 22),
+                      "Welcome to Hobby ARM OS", CARD_FG);
+    fb_draw_string_ui((uint32_t)(cx + 24), (uint32_t)(cy + 60),
+                      "Sign in to continue", DIM);
 
     /* fields */
     draw_field(cx + 40, cy + 110, cw - 80, 36,
@@ -112,14 +111,14 @@ static void paint_screen(const char *user, int ulen,
     draw_button(bx, by, bw, bh, "Sign in", btn_hover, btn_press);
 
     if (err) {
-        fb_draw_string((uint32_t)(cx + 40), (uint32_t)(by - 28),
-                       err, ERROR_FG, 1);
+        fb_draw_string_ui((uint32_t)(cx + 40), (uint32_t)(by - 24),
+                          err, ERROR_FG);
     }
 
     /* tiny hint */
-    fb_draw_string((uint32_t)(cx + 40), (uint32_t)(cy + ch - 16),
-                   "Default: root / root  -  Tab to switch fields, Enter to sign in",
-                   DIM, 1);
+    fb_draw_string_ui((uint32_t)(cx + 40), (uint32_t)(cy + ch - 22),
+                      "Default: root / root - Tab switches, Enter signs in",
+                      DIM);
 
     /* used by login_run for hit-tests */
     extern int  login_user_x, login_user_y, login_user_w, login_user_h;

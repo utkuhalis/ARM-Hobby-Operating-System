@@ -2,6 +2,7 @@
 #include "fb.h"
 #include "fw_cfg.h"
 #include "font.h"
+#include "font_smooth.h"
 
 #define FB_BPP    4
 #define FB_STRIDE (FB_WIDTH * FB_BPP)
@@ -143,6 +144,96 @@ void fb_draw_cursor(uint32_t x, uint32_t y, uint32_t color) {
         }
     }
 }
+
+/* ---------------- smooth font (alpha-blended) ---------------- */
+
+static inline uint32_t blend_argb(uint32_t dst, uint32_t src, uint8_t a) {
+    if (a == 0) return dst;
+    if (a == 255) return src;
+    uint32_t inv = 255u - a;
+    uint32_t dr = (dst >> 16) & 0xff;
+    uint32_t dg = (dst >>  8) & 0xff;
+    uint32_t db =  dst        & 0xff;
+    uint32_t sr = (src >> 16) & 0xff;
+    uint32_t sg = (src >>  8) & 0xff;
+    uint32_t sb =  src        & 0xff;
+    uint32_t r = (dr * inv + sr * a) / 255u;
+    uint32_t g = (dg * inv + sg * a) / 255u;
+    uint32_t b = (db * inv + sb * a) / 255u;
+    return (r << 16) | (g << 8) | b;
+}
+
+static void smooth_blit(int gx, int gy, const uint8_t *src,
+                        int w, int h, uint32_t color) {
+    uint32_t *px = (uint32_t *)fb_back;
+    for (int yy = 0; yy < h; yy++) {
+        int dy = gy + yy;
+        if (dy < 0 || dy >= (int)FB_HEIGHT) continue;
+        for (int xx = 0; xx < w; xx++) {
+            int dx = gx + xx;
+            if (dx < 0 || dx >= (int)FB_WIDTH) continue;
+            uint8_t a = src[yy * w + xx];
+            if (!a) continue;
+            uint32_t *p = &px[dy * FB_WIDTH + dx];
+            *p = blend_argb(*p, color, a);
+        }
+    }
+}
+
+void fb_draw_string_ui(uint32_t x, uint32_t y, const char *s, uint32_t color) {
+    int cx = (int)x;
+    while (*s) {
+        unsigned c = (unsigned char)*s++;
+        if (c < 0x20 || c > 0x7e) { cx += 8; continue; }
+        const struct smooth_glyph *g = &smooth_font_ui_glyphs[c - 0x20];
+        if (g->w && g->h) {
+            smooth_blit(cx + g->bearing_x, (int)y + g->bearing_y,
+                        smooth_font_ui_bitmap + g->bitmap_offset,
+                        g->w, g->h, color);
+        }
+        cx += g->advance;
+    }
+}
+
+void fb_draw_string_hd(uint32_t x, uint32_t y, const char *s, uint32_t color) {
+    int cx = (int)x;
+    while (*s) {
+        unsigned c = (unsigned char)*s++;
+        if (c < 0x20 || c > 0x7e) { cx += 12; continue; }
+        const struct smooth_glyph *g = &smooth_font_hd_glyphs[c - 0x20];
+        if (g->w && g->h) {
+            smooth_blit(cx + g->bearing_x, (int)y + g->bearing_y,
+                        smooth_font_hd_bitmap + g->bitmap_offset,
+                        g->w, g->h, color);
+        }
+        cx += g->advance;
+    }
+}
+
+uint32_t fb_text_ui_width(const char *s) {
+    uint32_t w = 0;
+    while (*s) {
+        unsigned c = (unsigned char)*s++;
+        if (c < 0x20 || c > 0x7e) { w += 8; continue; }
+        w += smooth_font_ui_glyphs[c - 0x20].advance;
+    }
+    return w;
+}
+
+uint32_t fb_text_hd_width(const char *s) {
+    uint32_t w = 0;
+    while (*s) {
+        unsigned c = (unsigned char)*s++;
+        if (c < 0x20 || c > 0x7e) { w += 12; continue; }
+        w += smooth_font_hd_glyphs[c - 0x20].advance;
+    }
+    return w;
+}
+
+uint32_t fb_text_ui_line_height(void) { return SMOOTH_FONT_UI_LINE_HEIGHT; }
+uint32_t fb_text_hd_line_height(void) { return SMOOTH_FONT_HD_LINE_HEIGHT; }
+
+/* ---------------- existing 8x16 bitmap font ---------------- */
 
 void fb_draw_glyph16(uint32_t x, uint32_t y, char c, uint32_t color) {
     const uint8_t *glyph = font_8x16_glyph(c);

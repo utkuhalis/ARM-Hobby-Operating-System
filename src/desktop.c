@@ -19,9 +19,9 @@
 
 #define DOCK_BG     0x000d1220u
 #define DOCK_BORDER 0x002a3550u
-#define ICON_SIZE   56
-#define ICON_GAP    24
-#define ICON_LABEL_H  14
+#define ICON_SIZE   64
+#define ICON_GAP    44
+#define ICON_LABEL_H  18
 
 #define MAX_DOCK_ITEMS 16
 
@@ -229,33 +229,32 @@ static void paint_top_bar(void) {
     fb_fill_rect(0, 0, FB_WIDTH, DESKTOP_TOPBAR_H, TOP_BG);
     fb_fill_rect(0, DESKTOP_TOPBAR_H - 1, FB_WIDTH, 1, DOCK_BORDER);
 
-    int text_y = (DESKTOP_TOPBAR_H - 16) / 2;
+    uint32_t lh = fb_text_ui_line_height();
+    int text_y = ((int)DESKTOP_TOPBAR_H - (int)lh) / 2 - 1;
 
-    /* Left: brand label, font scale 2 = 16 px tall */
-    fb_draw_string(12, (uint32_t)text_y, "Hobby ARM OS", TOP_FG, 2);
+    /* Left: brand label */
+    fb_draw_string_ui(14, (uint32_t)text_y, "Hobby ARM OS", TOP_FG);
 
-    /* Right: net status + clock, font scale 1 to keep them tidy. */
+    /* Right: net status + clock. Lay them out from the right edge. */
     char net[40];
     format_net(net, sizeof(net));
 
     char clock[24];
     format_clock(clock, timer_ticks() / (uint64_t)timer_hz());
 
-    int net_len = 0; while (net[net_len]) net_len++;
-    int cl_len  = 0; while (clock[cl_len]) cl_len++;
-
-    int right_x = (int)FB_WIDTH - 16;
-    int cl_w = cl_len * 16;          /* scale 2 */
+    int right_x = (int)FB_WIDTH - 18;
+    int cl_w = (int)fb_text_ui_width(clock);
     int cl_x = right_x - cl_w;
-    int cy = (DESKTOP_TOPBAR_H - 16) / 2;
-    fb_draw_string((uint32_t)cl_x, (uint32_t)cy, clock, TOP_FG, 2);
+    fb_draw_string_ui((uint32_t)cl_x, (uint32_t)text_y, clock, TOP_FG);
 
-    int net_x = cl_x - 24 - net_len * 8;
-    if (net_x < 200) net_x = 200;
+    int net_w = (int)fb_text_ui_width(net);
+    int net_x = cl_x - 28 - net_w;
+    if (net_x < 220) net_x = 220;
     uint32_t color = vnet_present() ? ACCENT_OK : ACCENT_BAD;
-    /* small status dot */
-    fb_fill_rect((uint32_t)(net_x - 14), (uint32_t)(cy + 4), 8, 8, color);
-    fb_draw_string((uint32_t)net_x, (uint32_t)(cy + 4), net, TOP_DIM, 1);
+    fb_fill_rect((uint32_t)(net_x - 14),
+                 (uint32_t)(text_y + (int)lh / 2 - 4),
+                 8, 8, color);
+    fb_draw_string_ui((uint32_t)net_x, (uint32_t)text_y, net, TOP_DIM);
 }
 
 /* ------------- dock ------------- */
@@ -288,25 +287,25 @@ static void paint_dock(void) {
         fb_fill_rect((uint32_t)(ix + sz - 1), (uint32_t)iy,
                      1, (uint32_t)sz, DOCK_BORDER);
 
-        /* big first letter as the icon graphic, scale 3 */
+        /* Big first letter (heading-size smooth font) */
         char letter = it->name[0];
         if (letter >= 'a' && letter <= 'z') letter -= 'a' - 'A';
         char one[2] = { letter, 0 };
-        fb_draw_string((uint32_t)(ix + sz / 2 - 12),
-                       (uint32_t)(iy + sz / 2 - 12),
-                       one, TOP_FG, 3);
+        uint32_t letter_w = fb_text_hd_width(one);
+        fb_draw_string_hd((uint32_t)(ix + sz / 2 - (int)letter_w / 2),
+                          (uint32_t)(iy + sz / 2 - 14),
+                          one, TOP_FG);
 
-        /* Label: clipped to at most 10 chars so neighbours don't
-         * collide on a busy dock. */
-        char label[12];
+        /* Label, smooth UI font, clipped to fit. */
+        char label[20];
         int li = 0;
-        while (li < 10 && it->name[li]) { label[li] = it->name[li]; li++; }
+        while (li < 12 && it->name[li]) { label[li] = it->name[li]; li++; }
         label[li] = 0;
-        int label_w = li * 8;
-        int label_x = it->x + ICON_SIZE / 2 - label_w / 2;
-        fb_draw_string((uint32_t)label_x,
-                       (uint32_t)(it->y + ICON_SIZE + 2),
-                       label, TOP_FG, 1);
+        uint32_t lw = fb_text_ui_width(label);
+        int label_x = it->x + ICON_SIZE / 2 - (int)lw / 2;
+        fb_draw_string_ui((uint32_t)label_x,
+                          (uint32_t)(it->y + ICON_SIZE + 4),
+                          label, TOP_FG);
     }
 }
 
@@ -433,16 +432,16 @@ static void paint_file_icons(void) {
 
         /* label centered below */
         int label_len = 0; while (it->name[label_len]) label_len++;
-        int max_chars = (FICON_SIZE + 16) / 8;
+        int max_chars = 14;
         if (label_len > max_chars) label_len = max_chars;
-        int label_w = label_len * 8;
-        int label_x = it->x + FICON_SIZE / 2 - label_w / 2;
         char label[32];
         for (int k = 0; k < label_len; k++) label[k] = it->name[k];
         label[label_len] = 0;
-        fb_draw_string((uint32_t)label_x,
-                       (uint32_t)(it->y + FICON_SIZE + 2),
-                       label, TOP_FG, 1);
+        uint32_t lw = fb_text_ui_width(label);
+        int label_x = it->x + FICON_SIZE / 2 - (int)lw / 2;
+        fb_draw_string_ui((uint32_t)label_x,
+                          (uint32_t)(it->y + FICON_SIZE + 4),
+                          label, TOP_FG);
     }
 }
 

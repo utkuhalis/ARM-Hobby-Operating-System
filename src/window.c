@@ -552,18 +552,13 @@ static void paint_window(window_t *w) {
                  w->w - 2 * WIN_BORDER, WIN_TITLE_H - WIN_BORDER,
                  w->focused ? WIN_ACCENT_FOCUS : w->accent);
 
-    /* Title text - centered */
-    int title_len = 0;
-    while (title_len < WIN_TITLE_MAX && w->title[title_len]) title_len++;
-    int title_width = title_len * WIN_CHAR_W;
+    /* Title text - centered, smooth UI font */
+    int title_width = (int)fb_text_ui_width(w->title);
     int button_size = WIN_TITLE_H - 2 * WIN_BORDER;
-    int available_width = w->w - 2 * WIN_BORDER - button_size - 8;
+    int available_width = w->w - 2 * WIN_BORDER - 2 * button_size - 12;
     int tx = w->x + WIN_BORDER + (available_width - title_width) / 2;
-    int ty = w->y + (WIN_TITLE_H - 16) / 2 + 1;
-    for (int i = 0; w->title[i] && i < WIN_TITLE_MAX; i++) {
-        fb_draw_glyph16((uint32_t)(tx + i * WIN_CHAR_W),
-                        (uint32_t)ty, w->title[i], WIN_FG);
-    }
+    int ty = w->y + (WIN_TITLE_H - (int)fb_text_ui_line_height()) / 2;
+    fb_draw_string_ui((uint32_t)tx, (uint32_t)ty, w->title, WIN_FG);
 
     /* Close button */
     int button_x = w->x + w->w - WIN_BORDER - button_size;
