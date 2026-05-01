@@ -18,7 +18,12 @@ void desktop_init(void);
 /* Refresh dock contents (call after pkg install/remove). */
 void desktop_rebuild_dock(void);
 
-/* Paint the top bar + dock. Call from window_compose after windows. */
+/* Paint the desktop file icons. Call BEFORE windows so opened windows
+ * cover the icons (they're on the desktop background). */
+void desktop_paint_icons(void);
+
+/* Paint the top bar + dock + any active context menu. Call AFTER
+ * windows so chrome stays on top of every window. */
 void desktop_paint_chrome(void);
 
 /* Returns 1 if the click landed on a dock icon and was consumed

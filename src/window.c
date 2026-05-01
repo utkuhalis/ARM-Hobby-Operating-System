@@ -304,6 +304,19 @@ window_t *window_at(int idx) {
     return &windows[idx];
 }
 
+int window_hits(int x, int y) {
+    for (int i = window_n - 1; i >= 0; i--) {
+        window_t *w = &windows[i];
+        if (!w->visible) continue;
+        if (w->anim_t < 200) continue;   /* still animating in */
+        if (x >= w->x && x < w->x + w->w &&
+            y >= w->y && y < w->y + w->h) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int point_in_window(window_t *w, int x, int y) {
     return x >= w->x && x < w->x + w->w &&
            y >= w->y && y < w->y + w->h;
@@ -659,6 +672,9 @@ static void paint_window(window_t *w) {
 
 void window_compose(void) {
     wallpaper_paint();
+    /* Desktop file icons sit on the wallpaper; windows go on top of
+     * them. */
+    desktop_paint_icons();
 
     /* Step every window's open/close/minimize animation one tick
      * before painting so motion is visible across frames. */

@@ -336,14 +336,12 @@ static int       last_click_idx = -1;
 static uint64_t  last_click_tick;
 
 /* right-click context menu */
-#define MENU_ITEMS 3
-static const char *menu_labels[MENU_ITEMS] = {
-    "New Folder", "New File", "Refresh"
-};
+#define MENU_MAX 5
 static int       menu_visible;
 static int       menu_x, menu_y;
 static int       menu_w, menu_h;
 static int       menu_hover = -1;
+static int       menu_target_icon = -1;  /* -1 = empty-area menu */
 
 /* Drag state for desktop icons. */
 static int dicon_drag_idx = -1;
@@ -363,6 +361,21 @@ static int icon_visible_area(int y) {
 static int name_ends_slash(const char *s) {
     int n = 0; while (s[n]) n++;
     return n > 0 && s[n - 1] == '/';
+}
+
+static int is_top_level(const char *name) {
+    /* Top-level icons: no '/' in the name, OR exactly one '/' at the
+     * end (a folder marker). Files nested inside folders are hidden
+     * from the desktop. */
+    int slashes = 0;
+    int last_slash_pos = -1;
+    int n = 0;
+    while (name[n]) {
+        if (name[n] == '/') { slashes++; last_slash_pos = n; }
+        n++;
+    }
+    if (slashes == 0) return 1;
+    return slashes == 1 && last_slash_pos == n - 1;
 }
 
 static struct file_icon *find_or_alloc_icon(const char *name) {
@@ -411,6 +424,7 @@ static void sync_icons_from_fs(void) {
     for (int i = 0; i < 16; i++) {
         fs_file_t *f = fs_at(i);
         if (!f) continue;
+        if (!is_top_level(f->name)) continue;
         struct file_icon *it = find_or_alloc_icon(f->name);
         if (!it) continue;
         int idx = (int)(it - ficons);
@@ -525,26 +539,45 @@ static void paint_file_icons(void) {
         fb_fill_rect((uint32_t)x1, (uint32_t)y0, 1, (uint32_t)h, 0x004a90e2u);
     }
 
-    /* context menu */
-    if (menu_visible) {
-        fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y,
-                     (uint32_t)menu_w, (uint32_t)menu_h, 0x00f4f6faff & 0xffffffu);
-        fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y, (uint32_t)menu_w, 1, 0x00141a26u);
-        fb_fill_rect((uint32_t)menu_x, (uint32_t)(menu_y + menu_h - 1),
-                     (uint32_t)menu_w, 1, 0x00141a26u);
-        fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y, 1, (uint32_t)menu_h, 0x00141a26u);
-        fb_fill_rect((uint32_t)(menu_x + menu_w - 1), (uint32_t)menu_y,
-                     1, (uint32_t)menu_h, 0x00141a26u);
-        int row_h = 30;
-        for (int i = 0; i < MENU_ITEMS; i++) {
-            int ry = menu_y + 1 + i * row_h;
-            if (i == menu_hover) {
-                fb_fill_rect((uint32_t)(menu_x + 1), (uint32_t)ry,
-                             (uint32_t)(menu_w - 2), (uint32_t)row_h, 0x00cce5ffu);
-            }
-            fb_draw_string_ui((uint32_t)(menu_x + 14), (uint32_t)(ry + 6),
-                              menu_labels[i], 0x00141a26u);
+}
+
+/* The right-click context menu has two sets of items. We pick which
+ * set based on what was under the cursor when the user right-clicked
+ * (icon -> "Open / Delete", empty -> "New Folder / New File / Refresh").
+ * Filled in by desktop_handle_pointer when the menu opens. */
+static const char *active_menu_labels[MENU_MAX];
+static int          active_menu_count;
+static const char *empty_menu[] = { "New Folder", "New File", "Refresh", 0 };
+static const char *file_menu[]  = { "Open", "Delete", 0 };
+static const char *folder_menu[]= { "Open Folder", "Delete", 0 };
+
+static void set_menu(const char **items) {
+    active_menu_count = 0;
+    for (int i = 0; items[i] && i < MENU_MAX; i++) {
+        active_menu_labels[i] = items[i];
+        active_menu_count++;
+    }
+}
+
+static void paint_context_menu(void) {
+    if (!menu_visible) return;
+    fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y,
+                 (uint32_t)menu_w, (uint32_t)menu_h, 0x00f4f6fau);
+    fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y, (uint32_t)menu_w, 1, 0x00141a26u);
+    fb_fill_rect((uint32_t)menu_x, (uint32_t)(menu_y + menu_h - 1),
+                 (uint32_t)menu_w, 1, 0x00141a26u);
+    fb_fill_rect((uint32_t)menu_x, (uint32_t)menu_y, 1, (uint32_t)menu_h, 0x00141a26u);
+    fb_fill_rect((uint32_t)(menu_x + menu_w - 1), (uint32_t)menu_y,
+                 1, (uint32_t)menu_h, 0x00141a26u);
+    int row_h = 30;
+    for (int i = 0; i < active_menu_count; i++) {
+        int ry = menu_y + 1 + i * row_h;
+        if (i == menu_hover) {
+            fb_fill_rect((uint32_t)(menu_x + 1), (uint32_t)ry,
+                         (uint32_t)(menu_w - 2), (uint32_t)row_h, 0x00cce5ffu);
         }
+        fb_draw_string_ui((uint32_t)(menu_x + 14), (uint32_t)(ry + 6),
+                          active_menu_labels[i], 0x00141a26u);
     }
 }
 
@@ -574,10 +607,18 @@ static void open_viewer(const char *name) {
     window_set_focus(w);
 }
 
+/* Background layer: file icons + multi-select rubber-band. Painted
+ * before windows so windows render on top of the icon layer. */
+void desktop_paint_icons(void) {
+    paint_file_icons();
+}
+
+/* Foreground layer: top bar, dock, and any context menu. Painted
+ * after windows so chrome stays on top. */
 void desktop_paint_chrome(void) {
     paint_top_bar();
-    paint_file_icons();
     paint_dock();
+    paint_context_menu();
 }
 
 /* ------------- pointer dispatch ------------- */
@@ -602,19 +643,147 @@ static int unique_fs_name(const char *prefix, char *out, int outsz, int folder) 
     return 0;
 }
 
-static void menu_action(int idx) {
-    char name[32];
-    if (idx == 0) {
-        if (unique_fs_name("folder", name, sizeof(name), 1)) {
-            (void)fs_write(name, "", 0);
+/* Open a window listing every fs file whose name starts with
+ * "<folder_name>/". Each child gets a clickable label that calls
+ * open_viewer when activated. The list is built once at open time;
+ * to refresh, close the window and double-click the folder again. */
+#include "window.h"
+extern window_t *window_create(const char *title, int x, int y);
+extern void      window_set_focus(window_t *w);
+extern void      window_clear(window_t *w);
+extern void      window_puts(window_t *w, const char *s);
+
+static void open_folder(const char *folder_name) {
+    /* folder_name is "foldername/" -- strip the slash for the title */
+    char title[40];
+    int o = 0;
+    const char *p = "Folder: ";
+    while (*p && o + 1 < (int)sizeof(title)) title[o++] = *p++;
+    int i = 0;
+    while (folder_name[i] && folder_name[i] != '/' && o + 1 < (int)sizeof(title)) {
+        title[o++] = folder_name[i++];
+    }
+    title[o] = 0;
+
+    window_t *w = window_create(title, 220, 140);
+    if (!w) return;
+    window_clear(w);
+
+    /* prefix length including trailing slash */
+    int plen = 0;
+    while (folder_name[plen]) plen++;
+
+    int found = 0;
+    for (int k = 0; k < FS_MAX_FILES; k++) {
+        fs_file_t *f = fs_at(k);
+        if (!f) continue;
+        int matches = 1;
+        for (int m = 0; m < plen; m++) {
+            if (f->name[m] != folder_name[m]) { matches = 0; break; }
         }
-    } else if (idx == 1) {
-        if (unique_fs_name("file", name, sizeof(name), 0)) {
-            (void)fs_write(name, "", 0);
+        if (!matches) continue;
+        if (!f->name[plen]) continue;  /* the folder marker itself */
+        window_puts(w, "  ");
+        window_puts(w, f->name + plen);
+        window_puts(w, "\n");
+        found++;
+    }
+    if (!found) window_puts(w, "  (empty)\n");
+    window_set_focus(w);
+}
+
+static int find_icon_at(int32_t mx, int32_t my) {
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (!ficons[i].used) continue;
+        if (hits_ficon(&ficons[i], mx, my)) return i;
+    }
+    return -1;
+}
+
+static int find_folder_at(int32_t mx, int32_t my, int exclude_idx) {
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (i == exclude_idx) continue;
+        if (!ficons[i].used) continue;
+        if (!ficons[i].is_folder) continue;
+        if (hits_ficon(&ficons[i], mx, my)) return i;
+    }
+    return -1;
+}
+
+static void delete_selected(void) {
+    /* Delete every selected fs entry (recursively for folders -- so a
+     * folder takes its children with it). */
+    /* Snapshot names first since fs_delete may shuffle storage. */
+    char doomed[MAX_FILE_ICONS][32];
+    int  n = 0;
+    for (int i = 0; i < MAX_FILE_ICONS; i++) {
+        if (!ficons[i].used || !ficons[i].selected) continue;
+        if (n >= MAX_FILE_ICONS) break;
+        int k = 0;
+        while (ficons[i].name[k] && k < 31) {
+            doomed[n][k] = ficons[i].name[k]; k++;
+        }
+        doomed[n][k] = 0;
+        n++;
+    }
+    for (int i = 0; i < n; i++) {
+        const char *name = doomed[i];
+        int is_folder = name[0] && name[(int)strlen(name) - 1] == '/';
+        if (is_folder) {
+            /* delete all children whose name starts with "name" */
+            int plen = (int)strlen(name);
+            for (int k = 0; k < FS_MAX_FILES; k++) {
+                fs_file_t *f = fs_at(k);
+                if (!f) continue;
+                int matches = 1;
+                for (int m = 0; m < plen; m++) {
+                    if (f->name[m] != name[m]) { matches = 0; break; }
+                }
+                if (matches) (void)fs_delete(f->name);
+            }
+        } else {
+            (void)fs_delete(name);
         }
     }
-    /* idx == 2 (Refresh): no-op; sync_icons_from_fs runs every frame */
 }
+
+static void menu_action(int idx) {
+    char name[32];
+    if (menu_target_icon < 0) {
+        /* empty-area menu */
+        if (idx == 0) {
+            if (unique_fs_name("folder", name, sizeof(name), 1)) {
+                (void)fs_write(name, "", 0);
+            }
+        } else if (idx == 1) {
+            if (unique_fs_name("file", name, sizeof(name), 0)) {
+                (void)fs_write(name, "", 0);
+            }
+        }
+        /* idx == 2 (Refresh): no-op */
+    } else {
+        /* icon-context menu: idx 0 = Open, idx 1 = Delete */
+        struct file_icon *it = &ficons[menu_target_icon];
+        if (idx == 0) {
+            if (it->is_folder) open_folder(it->name);
+            else               open_viewer(it->name);
+        } else if (idx == 1) {
+            /* If the right-clicked icon isn't already selected,
+             * just delete it. Otherwise delete every selected icon. */
+            int any_selected = 0;
+            for (int i = 0; i < MAX_FILE_ICONS; i++) {
+                if (ficons[i].used && ficons[i].selected) { any_selected = 1; break; }
+            }
+            if (!any_selected) {
+                clear_selection();
+                it->selected = 1;
+            }
+            delete_selected();
+        }
+    }
+}
+
+extern int window_hits(int x, int y);
 
 int desktop_handle_pointer(int32_t mx, int32_t my,
                            int buttons, int prev_buttons) {
@@ -640,7 +809,7 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
             my >= menu_y && my < menu_y + menu_h) {
             menu_hover = (int)((my - menu_y - 1) / row_h);
             if (menu_hover < 0) menu_hover = 0;
-            if (menu_hover >= MENU_ITEMS) menu_hover = MENU_ITEMS - 1;
+            if (menu_hover >= active_menu_count) menu_hover = active_menu_count - 1;
             if (release) {
                 menu_action(menu_hover);
                 menu_visible = 0;
@@ -657,12 +826,36 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
         }
     }
 
-    /* ---- desktop-area: file icons ---- */
+    /* ---- desktop-area ---- */
     if (my >= DESKTOP_TOPBAR_H && my < dock_top) {
+
+        /* Right-click pops the context menu. Two modes:
+         *   over an icon  -> Open / Delete (icon-context)
+         *   over empty    -> New Folder / New File / Refresh
+         * If a window is under the cursor and we're NOT over an icon,
+         * defer the right-click to the window manager (currently a
+         * no-op there, but keeps the menu from launching on top of a
+         * window the user was clicking inside). */
         if (rpress) {
+            int hovered_icon = find_icon_at(mx, my);
+            if (hovered_icon < 0 && window_hits((int)mx, (int)my)) {
+                return 0;
+            }
             int x = (int)mx, y = (int)my;
-            menu_w = 180;
-            menu_h = MENU_ITEMS * 30 + 2;
+            if (hovered_icon >= 0) {
+                /* Single right-click on an unselected icon also selects it. */
+                if (!ficons[hovered_icon].selected) {
+                    clear_selection();
+                    ficons[hovered_icon].selected = 1;
+                }
+                set_menu(ficons[hovered_icon].is_folder ? folder_menu : file_menu);
+                menu_target_icon = hovered_icon;
+            } else {
+                set_menu(empty_menu);
+                menu_target_icon = -1;
+            }
+            menu_w = 200;
+            menu_h = active_menu_count * 30 + 2;
             if (x + menu_w > (int)FB_WIDTH)  x = (int)FB_WIDTH  - menu_w - 4;
             if (y + menu_h > dock_top)       y = dock_top - menu_h - 4;
             menu_x = x; menu_y = y;
@@ -672,31 +865,28 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
         }
 
         if (press) {
-            int hovered = -1;
-            for (int i = 0; i < MAX_FILE_ICONS; i++) {
-                if (!ficons[i].used) continue;
-                if (hits_ficon(&ficons[i], mx, my)) { hovered = i; break; }
-            }
-            int shift = 0;
-            (void)shift;  /* keyboard shift state isn't tracked here yet */
+            int hovered = find_icon_at(mx, my);
             if (hovered >= 0) {
-                /* macOS-style: single click selects (and deselects others
-                 * unless already selected). Double click opens. */
+                /* macOS-ish: single click selects (deselect others
+                 * unless this one is already selected). Second click
+                 * within ~half a second opens the file/folder. */
                 if (!ficons[hovered].selected) {
                     clear_selection();
                     ficons[hovered].selected = 1;
                 }
-                /* double-click detect */
                 uint64_t now = timer_ticks();
                 if (last_click_idx == hovered &&
                     (now - last_click_tick) < (uint64_t)(timer_hz() / 2)) {
-                    open_viewer(ficons[hovered].name);
+                    if (ficons[hovered].is_folder) {
+                        open_folder(ficons[hovered].name);
+                    } else {
+                        open_viewer(ficons[hovered].name);
+                    }
                     last_click_idx = -1;
                 } else {
                     last_click_idx = hovered;
                     last_click_tick = now;
                 }
-                /* prep for drag */
                 dicon_press_idx     = hovered;
                 dicon_press_x       = (int)mx;
                 dicon_press_y       = (int)my;
@@ -704,14 +894,18 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
                 dicon_drag_off_y    = (int)my - ficons[hovered].y;
                 dicon_drag_started  = 0;
                 return 1;
-            } else {
-                /* empty area: clear selection + start rubber-band */
-                clear_selection();
-                sel_drag_active = 1;
-                sel_drag_x0 = sel_drag_x1 = (int)mx;
-                sel_drag_y0 = sel_drag_y1 = (int)my;
-                return 0;  /* let windows still handle if user is on top of them */
             }
+            /* Empty press: if a window is under us, let the window
+             * manager handle this click (focus / drag titlebar / hit
+             * widgets). Otherwise start a rubber-band selection. */
+            if (window_hits((int)mx, (int)my)) {
+                return 0;
+            }
+            clear_selection();
+            sel_drag_active = 1;
+            sel_drag_x0 = sel_drag_x1 = (int)mx;
+            sel_drag_y0 = sel_drag_y1 = (int)my;
+            return 1;
         }
 
         if (left && dicon_press_idx >= 0) {
@@ -757,13 +951,46 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
             return 1;
         }
 
+        /* Release of an icon drag: if dropped on a folder, move the
+         * file (rename to "folder/name"). Otherwise leave it where the
+         * user dropped it. */
         if (release && dicon_press_idx >= 0) {
-            int idx = dicon_press_idx;
+            int src = dicon_press_idx;
             int was_drag = dicon_drag_started;
             dicon_press_idx    = -1;
             dicon_drag_idx     = -1;
             dicon_drag_started = 0;
-            (void)idx; (void)was_drag;
+
+            if (was_drag) {
+                int folder = find_folder_at(mx, my, src);
+                if (folder >= 0 && !ficons[src].is_folder) {
+                    /* Build the new name "folderprefix" + "src->name". */
+                    const char *fp = ficons[folder].name;  /* ends with '/' */
+                    int fp_len = 0; while (fp[fp_len]) fp_len++;
+                    char newname[FS_MAX_NAME + 1];
+                    int o = 0;
+                    while (fp[o] && o < FS_MAX_NAME) { newname[o] = fp[o]; o++; }
+                    int sn_i = 0;
+                    while (ficons[src].name[sn_i] && o + 1 < FS_MAX_NAME) {
+                        newname[o++] = ficons[src].name[sn_i++];
+                    }
+                    newname[o] = 0;
+                    if (!fs_find(newname)) {
+                        fs_file_t *f = fs_find(ficons[src].name);
+                        if (f) {
+                            uint8_t  buf[FS_MAX_DATA];
+                            uint32_t sz = f->size;
+                            for (uint32_t k = 0; k < sz; k++) buf[k] = f->data[k];
+                            (void)fs_delete(ficons[src].name);
+                            (void)fs_write(newname, buf, sz);
+                            /* Force the icon to disappear (it's no
+                             * longer top-level) so sync_icons doesn't
+                             * re-place it on the desktop. */
+                            ficons[src].used = 0;
+                        }
+                    }
+                }
+            }
             return 1;
         }
         if (release && sel_drag_active) {
@@ -772,6 +999,8 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
         }
 
         (void)icon_visible_area;
+        /* Empty desktop click that didn't start any of our drags --
+         * defer to window manager so window focus / drag still work. */
         return 0;
     }
 

@@ -115,6 +115,11 @@ void     window_compose(void);   /* paint all windows + cursor */
 int      window_count(void);
 window_t *window_at(int idx);
 
+/* True if any visible (and not-fully-collapsed) window contains the
+ * point. Used by the desktop so it doesn't start a rubber-band
+ * selection or eat clicks that should reach a window. */
+int      window_hits(int x, int y);
+
 /* Pointer event dispatcher: call once per tick with the latest cursor
  * state. Handles click-to-focus and title-bar dragging. */
 void     window_handle_pointer(int32_t mx, int32_t my, int buttons);
