@@ -259,9 +259,14 @@ static window_t *win_about;
 static window_t *win_calc;
 static window_t *win_store;
 static window_t *win_notepad;
+static window_t *win_browser;
+static window_t *win_calendar;
 static widget_t *calc_display;
 static widget_t *notepad_input;
 static widget_t *notepad_status;
+static widget_t *browser_input;
+static widget_t *browser_status;
+static window_t *win_browser_view;
 
 /* ---------------- App Store ---------------- */
 
@@ -303,10 +308,10 @@ static void build_store_window(void) {
     int win_w = 480;
     int win_h = 22 + n * row_h + 8;
 
-    win_store = window_create_widget("App Store", 16, 300, win_w, win_h);
+    win_store = window_create_widget("App Store", 200, 300, win_w, win_h);
 
     window_add_label(win_store, 10, 4, win_w - 20,
-                     "Install / remove built-in packages");
+                     "Install / remove apps from the repo");
 
     for (int i = 0; i < n; i++) {
         int row_y = 22 + i * row_h;
@@ -432,7 +437,7 @@ static void notepad_load_cb(window_t *w, widget_t *self) {
 }
 
 static void build_notepad_window(void) {
-    win_notepad = window_create_widget("Notepad", 16, 540, 480, 64);
+    win_notepad = window_create_widget("Notepad", 320, 200, 480, 90);
     window_add_label(win_notepad,  10,  4, 460, "Type a note, then Save:");
     notepad_input  = window_add_text_input(win_notepad, 10, 22, 280,
                                            "(click here, then type)",
@@ -443,7 +448,7 @@ static void build_notepad_window(void) {
 }
 
 static void build_calculator_window(void) {
-    win_calc = window_create_widget("Calculator", 600, 280, 180, 240);
+    win_calc = window_create_widget("Calculator", 800, 200, 180, 240);
 
     calc_display = window_add_label(win_calc, 10, 10, 160, "0");
 
@@ -465,6 +470,258 @@ static void build_calculator_window(void) {
         window_add_button(win_calc, buttons[i].x, buttons[i].y, 36,
                           buttons[i].label, buttons[i].cb);
     }
+}
+
+/* ---------------- Browser ---------------- */
+
+#include "http.h"
+
+static void browser_go_cb(window_t *w, widget_t *self) {
+    (void)w; (void)self;
+    if (!browser_input) return;
+    const char *url = widget_input_text(browser_input);
+
+    /* Accept either "http://host/path" or just "/path" (defaults to
+     * the QEMU host gateway 10.0.2.2:8090). */
+    char host_buf[64] = "10.0.2.2";
+    uint16_t port = 8090;
+    uint32_t ip = (10u<<24) | (0u<<16) | (2u<<8) | 2u;
+    const char *path = url;
+
+    if (url[0] == 'h' && url[1] == 't' && url[2] == 't' && url[3] == 'p') {
+        const char *p = url;
+        while (*p && *p != '/') p++;
+        while (*p == '/') p++;
+        int hi = 0;
+        while (*p && *p != '/' && *p != ':' && hi + 1 < (int)sizeof(host_buf)) {
+            host_buf[hi++] = *p++;
+        }
+        host_buf[hi] = 0;
+        if (*p == ':') {
+            p++;
+            int v = 0;
+            while (*p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); p++; }
+            if (v) port = (uint16_t)v;
+        }
+        path = (*p == '/') ? p : "/";
+    } else if (url[0] != '/') {
+        path = "/";
+    }
+
+    if (browser_status) widget_set_text(browser_status, "fetching...");
+    static uint8_t body[8192];
+    int status = 0;
+    int n = http_get(ip, port, host_buf, path,
+                     body, sizeof(body) - 1, &status);
+    if (n < 0) {
+        if (browser_status) {
+            char msg[40];
+            const char *p = "fetch failed: ";
+            int o = 0;
+            while (*p) msg[o++] = *p++;
+            msg[o++] = (n <= 0 && n > -10) ? (char)('0' - n) : '?';
+            msg[o] = 0;
+            widget_set_text(browser_status, msg);
+        }
+        return;
+    }
+    body[n] = 0;
+    if (browser_status) {
+        char msg[64];
+        const char *p = "HTTP ";
+        int o = 0;
+        while (*p) msg[o++] = *p++;
+        msg[o++] = (char)('0' + (status / 100) % 10);
+        msg[o++] = (char)('0' + (status / 10)  % 10);
+        msg[o++] = (char)('0' + status % 10);
+        const char *suf = "  ";
+        while (*suf) msg[o++] = *suf++;
+        char szs[12];
+        int v = n, sn = 0;
+        if (v == 0) szs[sn++] = '0';
+        char tmp[12]; int tn = 0;
+        while (v > 0) { tmp[tn++] = (char)('0' + v % 10); v /= 10; }
+        while (tn > 0) szs[sn++] = tmp[--tn];
+        szs[sn] = 0;
+        for (int i = 0; szs[i]; i++) msg[o++] = szs[i];
+        const char *suf2 = " bytes";
+        while (*suf2) msg[o++] = *suf2++;
+        msg[o] = 0;
+        widget_set_text(browser_status, msg);
+    }
+
+    /* Pump the body (raw, including headers) into a separate
+     * scrollable text window so user actually sees content. */
+    if (!win_browser_view) {
+        win_browser_view = window_create("Page", 360, 320);
+    }
+    win_browser_view->visible = 1;
+    window_clear(win_browser_view);
+    for (int i = 0; i < n; i++) {
+        char c = (char)body[i];
+        if (c == '\r') continue;
+        window_putc(win_browser_view, c);
+    }
+    window_set_focus(win_browser_view);
+}
+
+static void build_browser_window(void) {
+    win_browser = window_create_widget("Browser", 200, 160, 540, 78);
+    window_add_label(win_browser, 10, 4, 520,
+                     "URL (e.g. /index.json or http://10.0.2.2:8090/...):");
+    browser_input = window_add_text_input(win_browser, 10, 22, 380,
+                                          "/index.json", browser_go_cb);
+    window_add_button(win_browser, 396, 18, 60, "Go", browser_go_cb);
+    browser_status = window_add_label(win_browser, 10, 50, 520, "ready");
+}
+
+/* ---------------- Calendar ---------------- */
+
+static void build_calendar_window(void) {
+    win_calendar = window_create_widget("Calendar", 1000, 200, 280, 240);
+
+    /* Render the current month from the same wall-clock the top bar
+     * uses (boot baseline 2026-05-01). */
+    static const uint8_t dim_table[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    extern uint64_t timer_ticks(void);
+    extern uint32_t timer_hz(void);
+    uint64_t s = timer_ticks() / (uint64_t)timer_hz() + (uint64_t)12 * 3600;
+    uint32_t total_days = (uint32_t)(s / 86400);
+    uint32_t year = 2026, month = 5, day = 1;
+    while (total_days > 0) {
+        uint32_t dim = dim_table[month - 1];
+        if (month == 2 && (year % 4 == 0)) dim = 29;
+        if (total_days >= dim - day + 1) {
+            total_days -= (dim - day + 1);
+            day = 1;
+            month++;
+            if (month > 12) { month = 1; year++; }
+        } else {
+            day += total_days;
+            total_days = 0;
+        }
+    }
+
+    char header[32];
+    static const char *month_name[] = {
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December"
+    };
+    int o = 0;
+    const char *mn = month_name[month - 1];
+    while (*mn) header[o++] = *mn++;
+    header[o++] = ' ';
+    header[o++] = (char)('0' + (year/1000)%10);
+    header[o++] = (char)('0' + (year/100)%10);
+    header[o++] = (char)('0' + (year/10)%10);
+    header[o++] = (char)('0' + year%10);
+    header[o] = 0;
+    window_add_label(win_calendar, 10, 4, 260, header);
+    window_add_label(win_calendar, 10, 22, 260, "Mo Tu We Th Fr Sa Su");
+
+    /* Zeller's congruence to find the day-of-week for the 1st of the
+     * month. Returns 0=Sat..6=Fri; remap so 0=Mon..6=Sun. */
+    uint32_t y = year, m = month;
+    if (m < 3) { m += 12; y -= 1; }
+    uint32_t k = y % 100, j = y / 100;
+    int h = (1 + (13*(m+1))/5 + k + k/4 + j/4 + 5*j) % 7;
+    int dow_mon0 = (h + 6) % 7;  /* 0=Sat→6, 1=Sun→0, ..., 6=Fri→5 */
+    /* Above gives 0=Sat=>6, 1=Sun=>0, 2=Mon=>1... let me recompute:
+     * Zeller: 0=Sat,1=Sun,2=Mon,3=Tue,4=Wed,5=Thu,6=Fri.
+     * Want 0=Mon. So mon0 = (zeller + 5) % 7. */
+    dow_mon0 = (h + 5) % 7;
+
+    uint32_t dim = dim_table[month - 1];
+    if (month == 2 && (year % 4 == 0)) dim = 29;
+
+    char cell[3];
+    int col = dow_mon0;
+    int row = 0;
+    for (uint32_t d = 1; d <= dim; d++) {
+        cell[0] = d < 10 ? ' ' : (char)('0' + d / 10);
+        cell[1] = (char)('0' + d % 10);
+        cell[2] = 0;
+        int x = 10 + col * 26;
+        int y2 = 42 + row * 18;
+        if (d == day) {
+            /* Highlight today via a label that includes brackets. */
+            char today[5]; today[0] = '['; today[1] = cell[0];
+            today[2] = cell[1]; today[3] = ']'; today[4] = 0;
+            window_add_label(win_calendar, x - 4, y2, 32, today);
+        } else {
+            window_add_label(win_calendar, x, y2, 24, cell);
+        }
+        col++;
+        if (col >= 7) { col = 0; row++; }
+    }
+}
+
+/* ---------------- Lazy launchers (called from the dock) ---------------- */
+
+static void show_window(window_t *w) {
+    if (!w) return;
+    w->visible = 1;
+    window_set_focus(w);
+}
+
+static void launch_terminal(void) {
+    if (!win_terminal) {
+        win_terminal = window_create("Terminal", 60, 80);
+        window_clear(win_terminal);
+        console_attach_window(win_terminal);
+        console_puts("Hobby ARM OS\ntype 'help' for commands\n\n");
+    }
+    show_window(win_terminal);
+}
+static void launch_monitor(void) {
+    if (!win_monitor) win_monitor = window_create("System Monitor", 700, 80);
+    show_window(win_monitor);
+}
+static void launch_about(void) {
+    if (!win_about) {
+        win_about = window_create_widget("About Hobby ARM OS",
+                                         500, 460, 320, 160);
+        window_add_label (win_about, 12, 14, 280, "Hobby ARM OS  v0.7");
+        window_add_label (win_about, 12, 34, 280, "AArch64 hand-rolled kernel");
+        window_add_label (win_about, 12, 54, 280, "ramfb + virtio + Spleen 8x16");
+        window_add_label (win_about, 12, 80, 280, "Click 'Close' to dismiss.");
+        window_add_button(win_about, 200, 110, 90, "Close", about_close_cb);
+    }
+    show_window(win_about);
+}
+static void launch_calculator(void) {
+    if (!win_calc) build_calculator_window();
+    show_window(win_calc);
+}
+static void launch_notepad(void) {
+    if (!win_notepad) build_notepad_window();
+    show_window(win_notepad);
+}
+static void launch_store(void) {
+    if (!win_store) build_store_window();
+    show_window(win_store);
+}
+static void launch_browser(void) {
+    if (!win_browser) build_browser_window();
+    show_window(win_browser);
+}
+static void launch_calendar(void) {
+    if (!win_calendar) build_calendar_window();
+    show_window(win_calendar);
+}
+
+/* Public dispatcher used by desktop.c when a built-in dock icon is
+ * clicked. Returns 0 on success, -1 if the name is unknown. */
+int kernel_launch_builtin(const char *name) {
+    if (strcmp(name, "Terminal")  == 0) { launch_terminal();  return 0; }
+    if (strcmp(name, "Monitor")   == 0) { launch_monitor();   return 0; }
+    if (strcmp(name, "About")     == 0) { launch_about();     return 0; }
+    if (strcmp(name, "Calculator")== 0) { launch_calculator();return 0; }
+    if (strcmp(name, "Notepad")   == 0) { launch_notepad();   return 0; }
+    if (strcmp(name, "App Store") == 0) { launch_store();     return 0; }
+    if (strcmp(name, "Browser")   == 0) { launch_browser();   return 0; }
+    if (strcmp(name, "Calendar")  == 0) { launch_calendar();  return 0; }
+    return -1;
 }
 
 static void render_monitor_window(void) {
@@ -605,23 +862,9 @@ void kernel_main(void) {
         fb_console_init(BG_COLOR, FG_COLOR);
         window_init();
         desktop_init();
-        win_terminal = window_create("Terminal", 16, 16 + 22);
-        win_monitor  = window_create("System Monitor",
-                                     16 + win_terminal->w + 16, 16 + 22);
-
-        /* About window: a real widget-based dialog with labels + a button */
-        win_about = window_create_widget(
-            "About Hobby ARM OS",
-            220, 280, 320, 160);
-        window_add_label (win_about, 12, 14, 280, "Hobby ARM OS  v0.6");
-        window_add_label (win_about, 12, 34, 280, "AArch64 hand-rolled kernel");
-        window_add_label (win_about, 12, 54, 280, "ramfb + virtio + Spleen 8x16");
-        window_add_label (win_about, 12, 80, 280, "Click 'Close' to dismiss.");
-        window_add_button(win_about, 200, 110, 90, "Close", about_close_cb);
-
-        build_calculator_window();
-        build_store_window();
-        build_notepad_window();
+        /* No windows are pre-created at boot. Each dock icon lazily
+         * builds its window the first time the user clicks it, so a
+         * fresh boot lands on a clean desktop. */
     }
 #endif
 
@@ -633,18 +876,8 @@ void kernel_main(void) {
 
     post();
 
-#ifdef BOARD_HAS_RAMFB
-    /* once boot is done, redirect console output into the Terminal
-     * window so the shell prompt and user output land there instead
-     * of dribbling out to the framebuffer-text console (which the
-     * compositor wipes every refresh anyway). */
-    if (win_terminal) {
-        window_clear(win_terminal);
-        console_attach_window(win_terminal);
-        console_puts("Hobby ARM OS\n");
-        console_puts("type 'help' for commands\n\n");
-    }
-#endif
+    /* No terminal at boot -- it appears when the user clicks the
+     * Terminal dock icon (launch_terminal attaches the console then). */
 
 #ifdef BOARD_HAS_GIC
     task_spawn("idle",   idle_thread,   NULL);

@@ -34,6 +34,10 @@ typedef struct {
     void      (*entry)(void);
 } pkg_t;
 
+/* Market apps. Built-ins (Calculator, Notepad, Browser, Calendar,
+ * Terminal, App Store, Monitor, About) live in the dock and are
+ * deliberately NOT in this catalog -- they're not installable or
+ * removable. */
 static const pkg_t catalog[] = {
     {"hello",   "1.0.0", "one-shot greeting from a user task",
                 "MIT",          1, user_main_hello   },
@@ -43,8 +47,6 @@ static const pkg_t catalog[] = {
                 "MIT",          1, user_main_clock   },
     {"load",    "1.0.0", "burn some ticks to exercise scheduler",
                 "MIT",          1, user_main_load    },
-    {"notepad", "0.1.0", "tiny notes editor backed by RAM fs",
-                "MIT",          1, user_main_notepad },
     {"files",   "0.1.0", "list and dump RAM filesystem contents",
                 "MIT",          1, user_main_files   },
     {"sysinfo", "0.1.0", "dump CPU + memory + uptime info",

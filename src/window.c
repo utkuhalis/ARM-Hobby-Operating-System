@@ -9,7 +9,7 @@
 #include "virtio_mouse.h"
 #endif
 
-#define MAX_WINDOWS 8
+#define MAX_WINDOWS 99
 
 static window_t windows[MAX_WINDOWS];
 static int      window_n;
@@ -253,6 +253,14 @@ static int point_in_titlebar(window_t *w, int x, int y) {
            y >= w->y && y < w->y + WIN_TITLE_H;
 }
 
+static int point_in_close_button(window_t *w, int x, int y) {
+    int button_size = WIN_TITLE_H - 2 * WIN_BORDER;
+    int button_x = w->x + w->w - WIN_BORDER - button_size;
+    int button_y = w->y + WIN_BORDER;
+    return x >= button_x && x < button_x + button_size &&
+           y >= button_y && y < button_y + button_size;
+}
+
 static widget_t *widget_at(window_t *w, int gx, int gy) {
     if (w->kind != WIN_KIND_WIDGET) return NULL;
     int local_x = gx - w->x - WIN_BORDER;
@@ -333,22 +341,28 @@ void window_handle_pointer(int32_t mx, int32_t my, int buttons) {
         }
         if (hit >= 0) {
             window_set_focus(&windows[hit]);
-            widget_t *g = widget_at(&windows[hit], (int)mx, (int)my);
-            if (g && g->type == WIDGET_BUTTON) {
-                g->pressed = 1;
-                clear_text_input_focus();
-            } else if (g && g->type == WIDGET_TEXT_INPUT) {
-                clear_text_input_focus();
-                focused_input = g;
-                g->input_focus = 1;
-            } else if (point_in_titlebar(&windows[hit], (int)mx, (int)my)) {
-                drag_active = 1;
-                drag_window = hit;
-                drag_off_x  = (int)mx - windows[hit].x;
-                drag_off_y  = (int)my - windows[hit].y;
+            /* Check for close button click first */
+            if (point_in_close_button(&windows[hit], (int)mx, (int)my)) {
+                window_close(&windows[hit]);
                 clear_text_input_focus();
             } else {
-                clear_text_input_focus();
+                widget_t *g = widget_at(&windows[hit], (int)mx, (int)my);
+                if (g && g->type == WIDGET_BUTTON) {
+                    g->pressed = 1;
+                    clear_text_input_focus();
+                } else if (g && g->type == WIDGET_TEXT_INPUT) {
+                    clear_text_input_focus();
+                    focused_input = g;
+                    g->input_focus = 1;
+                } else if (point_in_titlebar(&windows[hit], (int)mx, (int)my)) {
+                    drag_active = 1;
+                    drag_window = hit;
+                    drag_off_x  = (int)mx - windows[hit].x;
+                    drag_off_y  = (int)my - windows[hit].y;
+                    clear_text_input_focus();
+                } else {
+                    clear_text_input_focus();
+                }
             }
         } else {
             clear_text_input_focus();
@@ -468,13 +482,30 @@ static void paint_window(window_t *w) {
     fb_fill_rect(w->x + WIN_BORDER, w->y + WIN_BORDER,
                  w->w - 2 * WIN_BORDER, WIN_TITLE_H - WIN_BORDER,
                  w->focused ? WIN_ACCENT_FOCUS : w->accent);
-    /* Title text */
-    int tx = w->x + 6;
+
+    /* Title text - centered */
+    int title_len = 0;
+    while (title_len < WIN_TITLE_MAX && w->title[title_len]) title_len++;
+    int title_width = title_len * WIN_CHAR_W;
+    int button_size = WIN_TITLE_H - 2 * WIN_BORDER;
+    int available_width = w->w - 2 * WIN_BORDER - button_size - 8;
+    int tx = w->x + WIN_BORDER + (available_width - title_width) / 2;
     int ty = w->y + (WIN_TITLE_H - 16) / 2 + 1;
     for (int i = 0; w->title[i] && i < WIN_TITLE_MAX; i++) {
         fb_draw_glyph16((uint32_t)(tx + i * WIN_CHAR_W),
                         (uint32_t)ty, w->title[i], WIN_FG);
     }
+
+    /* Close button */
+    int button_x = w->x + w->w - WIN_BORDER - button_size;
+    int button_y = w->y + WIN_BORDER;
+    uint32_t button_bg = 0x00303a4eu;
+    uint32_t button_fg = 0x00d0d6e0u;
+    fb_fill_rect(button_x, button_y, button_size, button_size, button_bg);
+    /* X character centered in button */
+    int bx = button_x + (button_size - WIN_CHAR_W) / 2;
+    int by = button_y + (button_size - 16) / 2;
+    fb_draw_glyph16((uint32_t)bx, (uint32_t)by, 'X', button_fg);
     /* Content background */
     int cx = w->x + WIN_BORDER;
     int cy = w->y + WIN_TITLE_H;

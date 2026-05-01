@@ -19,13 +19,37 @@
 
 #define DOCK_BG     0x000d1220u
 #define DOCK_BORDER 0x002a3550u
-#define ICON_SIZE   44
-#define ICON_GAP    12
-#define ICON_LABEL_H  10
+#define ICON_SIZE   56
+#define ICON_GAP    24
+#define ICON_LABEL_H  14
 
-#define MAX_DOCK_ITEMS 12
+#define MAX_DOCK_ITEMS 16
+
+/* Built-in dock entries: always present, can't be removed, never appear
+ * in the App Store. The kernel side resolves the name -> launcher via
+ * kernel_launch_builtin (in kernel.c). */
+struct builtin_app {
+    const char *name;
+    uint32_t    color;
+};
+
+static const struct builtin_app builtins[] = {
+    {"Terminal",   0x002a3a52u},
+    {"Calculator", 0x004a78bcu},
+    {"Notepad",    0x00b0b8c8u},
+    {"Browser",    0x0044c87au},
+    {"Calendar",   0x00cc7a44u},
+    {"App Store",  0x00bc7a44u},
+    {0, 0},
+};
+
+extern int kernel_launch_builtin(const char *name);
+
+#define DOCK_KIND_BUILTIN 0
+#define DOCK_KIND_PKG     1
 
 struct dock_item {
+    int      kind;            /* DOCK_KIND_* */
     char     name[24];
     uint32_t color;
     int      x, y;
@@ -52,6 +76,7 @@ static void collect_installed(const char *name, void *ctx) {
     (void)ctx;
     if (dock_count >= MAX_DOCK_ITEMS) return;
     struct dock_item *it = &dock[dock_count++];
+    it->kind = DOCK_KIND_PKG;
     int i = 0;
     while (i < (int)sizeof(it->name) - 1 && name[i]) {
         it->name[i] = name[i];
@@ -62,12 +87,31 @@ static void collect_installed(const char *name, void *ctx) {
     it->pressed = 0;
 }
 
+static void add_builtin(const struct builtin_app *b) {
+    if (dock_count >= MAX_DOCK_ITEMS) return;
+    struct dock_item *it = &dock[dock_count++];
+    it->kind = DOCK_KIND_BUILTIN;
+    int i = 0;
+    while (i < (int)sizeof(it->name) - 1 && b->name[i]) {
+        it->name[i] = b->name[i];
+        i++;
+    }
+    it->name[i] = 0;
+    it->color = b->color;
+    it->pressed = 0;
+}
+
 void desktop_init(void) {
     dock_count = 0;
 }
 
 void desktop_rebuild_dock(void) {
     dock_count = 0;
+    /* built-ins first (left side of the dock) */
+    for (int i = 0; builtins[i].name; i++) {
+        add_builtin(&builtins[i]);
+    }
+    /* then user-installed packages */
     pkgstore_foreach(collect_installed, 0);
 
     /* Layout: center horizontally inside the dock strip. */
@@ -182,11 +226,12 @@ static void paint_top_bar(void) {
     fb_fill_rect(0, 0, FB_WIDTH, DESKTOP_TOPBAR_H, TOP_BG);
     fb_fill_rect(0, DESKTOP_TOPBAR_H - 1, FB_WIDTH, 1, DOCK_BORDER);
 
-    /* Left: app launcher hint */
-    fb_draw_string(8, 4, "Hobby ARM OS", TOP_FG, 1);
+    int text_y = (DESKTOP_TOPBAR_H - 16) / 2;
 
-    /* Right: net status, then date/time. We compute strings, then
-     * lay them out from the right edge so they don't collide. */
+    /* Left: brand label, font scale 2 = 16 px tall */
+    fb_draw_string(12, (uint32_t)text_y, "Hobby ARM OS", TOP_FG, 2);
+
+    /* Right: net status + clock, font scale 1 to keep them tidy. */
     char net[40];
     format_net(net, sizeof(net));
 
@@ -196,17 +241,18 @@ static void paint_top_bar(void) {
     int net_len = 0; while (net[net_len]) net_len++;
     int cl_len  = 0; while (clock[cl_len]) cl_len++;
 
-    int right_x = (int)FB_WIDTH - 8;
-    int cl_w = cl_len * 8;
+    int right_x = (int)FB_WIDTH - 16;
+    int cl_w = cl_len * 16;          /* scale 2 */
     int cl_x = right_x - cl_w;
-    fb_draw_string((uint32_t)cl_x, 4, clock, TOP_FG, 1);
+    int cy = (DESKTOP_TOPBAR_H - 16) / 2;
+    fb_draw_string((uint32_t)cl_x, (uint32_t)cy, clock, TOP_FG, 2);
 
-    int net_x = cl_x - 16 - net_len * 8;
-    if (net_x < 130) net_x = 130;
+    int net_x = cl_x - 24 - net_len * 8;
+    if (net_x < 200) net_x = 200;
     uint32_t color = vnet_present() ? ACCENT_OK : ACCENT_BAD;
     /* small status dot */
-    fb_fill_rect((uint32_t)(net_x - 10), 8, 6, 6, color);
-    fb_draw_string((uint32_t)net_x, 4, net, TOP_DIM, 1);
+    fb_fill_rect((uint32_t)(net_x - 14), (uint32_t)(cy + 4), 8, 8, color);
+    fb_draw_string((uint32_t)net_x, (uint32_t)(cy + 4), net, TOP_DIM, 1);
 }
 
 /* ------------- dock ------------- */
@@ -239,21 +285,25 @@ static void paint_dock(void) {
         fb_fill_rect((uint32_t)(ix + sz - 1), (uint32_t)iy,
                      1, (uint32_t)sz, DOCK_BORDER);
 
-        /* big first letter as the icon graphic */
+        /* big first letter as the icon graphic, scale 3 */
         char letter = it->name[0];
         if (letter >= 'a' && letter <= 'z') letter -= 'a' - 'A';
         char one[2] = { letter, 0 };
-        fb_draw_string((uint32_t)(ix + sz / 2 - 8),
-                       (uint32_t)(iy + sz / 2 - 8 * 2),
-                       one, TOP_FG, 2);
+        fb_draw_string((uint32_t)(ix + sz / 2 - 12),
+                       (uint32_t)(iy + sz / 2 - 12),
+                       one, TOP_FG, 3);
 
-        /* small label below */
-        int label_len = 0; while (it->name[label_len]) label_len++;
-        int label_w = label_len * 8;
+        /* Label: clipped to at most 10 chars so neighbours don't
+         * collide on a busy dock. */
+        char label[12];
+        int li = 0;
+        while (li < 10 && it->name[li]) { label[li] = it->name[li]; li++; }
+        label[li] = 0;
+        int label_w = li * 8;
         int label_x = it->x + ICON_SIZE / 2 - label_w / 2;
         fb_draw_string((uint32_t)label_x,
-                       (uint32_t)(it->y + ICON_SIZE + 1),
-                       it->name, TOP_FG, 1);
+                       (uint32_t)(it->y + ICON_SIZE + 2),
+                       label, TOP_FG, 1);
     }
 }
 
@@ -516,11 +566,15 @@ int desktop_handle_pointer(int32_t mx, int32_t my,
     if (left && hovered >= 0) dock[hovered].pressed = 1;
 
     if (release && hovered >= 0) {
-        const char *name = dock[hovered].name;
-        console_printf("\ndock: launching %s\n", name);
-        int id = pkg_run_by_name(name);
-        if (id < 0) {
-            console_printf("dock: '%s' failed to start (%d)\n", name, id);
+        struct dock_item *it = &dock[hovered];
+        if (it->kind == DOCK_KIND_BUILTIN) {
+            kernel_launch_builtin(it->name);
+        } else {
+            int id = pkg_run_by_name(it->name);
+            if (id < 0) {
+                console_printf("\ndock: '%s' failed to start (%d)\n",
+                               it->name, id);
+            }
         }
         return 1;
     }
