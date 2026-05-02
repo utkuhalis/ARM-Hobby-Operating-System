@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+release/
 *.o
 *.elf
 *.img
@@ -7,6 +8,7 @@ build/
 *.map
 *.lst
 *.dis
+*.tar.gz
 
 # Cross-compiled package binaries are deliverables, not throwaway
 # build artifacts -- ship them so 'pkg fetch' has something to serve.
