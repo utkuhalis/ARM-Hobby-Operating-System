@@ -5,6 +5,7 @@
 #include "timer.h"
 #include "tcp.h"
 #include "dns.h"
+#include "task.h"
 
 /*
  * Tiny networking stack: ARP, ICMP echo, IPv4 transmit/receive routing,
@@ -128,6 +129,7 @@ int net_arp_resolve(uint32_t ip, uint8_t mac_out[6], uint32_t timeout_ticks) {
     uint64_t deadline = timer_ticks() + timeout_ticks;
     while (timer_ticks() < deadline) {
         if (arp_cache_get(lookup, mac_out) == 0) return 0;
+        task_yield();
         __asm__ volatile("wfi");
     }
     /* one last try */
@@ -387,6 +389,7 @@ int net_ping(uint32_t target_ip, uint32_t timeout_ticks) {
             ping_pending = 0;
             return -2;
         }
+        task_yield();
         __asm__ volatile("wfi");
     }
     ping_pending = 0;

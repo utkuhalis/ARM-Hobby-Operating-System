@@ -3,6 +3,7 @@
 #include "net.h"
 #include "timer.h"
 #include "str.h"
+#include "task.h"
 
 /* QEMU slirp publishes a forwarding resolver here. */
 #define DNS_SERVER_IP   ((10u<<24) | (0u<<16) | (2u<<8) | 3u)
@@ -157,13 +158,15 @@ int dns_lookup(const char *name, uint32_t *out_ip, uint32_t timeout_ticks) {
         return -3;
     }
 
-    /* Wait for the response. */
+    /* Wait for the response. yield so the compositor + other tasks
+     * keep running while we sleep on the network. */
     uint64_t deadline = timer_ticks() + timeout_ticks;
     while (!result_ready) {
         if (timer_ticks() > deadline) {
             pending = 0;
             return -4;
         }
+        task_yield();
         __asm__ volatile("wfi");
     }
     if (!result_ok) return -5;

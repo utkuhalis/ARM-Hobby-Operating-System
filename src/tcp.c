@@ -3,6 +3,7 @@
 #include "net.h"
 #include "timer.h"
 #include "str.h"
+#include "task.h"
 
 /*
  * Single-connection blocking TCP. Built for talking to QEMU's slirp
@@ -182,6 +183,7 @@ int tcp_connect(uint32_t dst_ip, uint16_t dst_port, uint32_t timeout_ticks) {
     while (state == TCP_SYN_SENT) {
         if (reset_seen) { state = TCP_CLOSED; return -3; }
         if (timer_ticks() > deadline) { state = TCP_CLOSED; return -4; }
+        task_yield();
         __asm__ volatile("wfi");
     }
     return state == TCP_ESTABLISHED ? 0 : -5;
@@ -202,7 +204,8 @@ int tcp_send(const void *buf, uint32_t len, uint32_t timeout_ticks) {
         while (snd_nxt != snd_una) {
             if (reset_seen) return -2;
             if (timer_ticks() > deadline) return (int)sent;
-            __asm__ volatile("wfi");
+            task_yield();
+        __asm__ volatile("wfi");
         }
 
         if (send_segment(TCP_FLAG_ACK | TCP_FLAG_PSH, p + sent, chunk) != 0) {
@@ -221,6 +224,7 @@ int tcp_recv(void *buf, uint32_t maxlen, uint32_t timeout_ticks) {
         if (peer_fin) return 0;
         if (state == TCP_CLOSED) return -2;
         if (timer_ticks() > deadline) return -1;
+        task_yield();
         __asm__ volatile("wfi");
     }
     int n = (int)rx_pop((uint8_t *)buf, maxlen);
@@ -246,6 +250,7 @@ void tcp_close(void) {
     uint64_t deadline = timer_ticks() + 250;  /* 1 sec */
     while (state != TCP_CLOSED) {
         if (timer_ticks() > deadline) break;
+        task_yield();
         __asm__ volatile("wfi");
     }
     state = TCP_CLOSED;
