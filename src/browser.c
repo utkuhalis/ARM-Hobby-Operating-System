@@ -20,23 +20,23 @@
  *   4. browser_canvas_click hit-tests the recorded link bboxes.
  */
 
-#define MAX_BODY      32768
-#define MAX_ITEMS      512
-#define MAX_LINKS      128
+#define MAX_BODY     262144  /* 256 KiB -- big enough for most pages */
+#define MAX_ITEMS      1024
+#define MAX_LINKS      256
 #define HOME_HTML \
     "<h1>Hobby ARM OS Browser</h1>" \
-    "<p>This is a tiny HTML/1 renderer running on a hand-rolled " \
-    "AArch64 kernel. HTTPS isn't supported (no TLS yet) -- plain " \
-    "HTTP only.</p>" \
+    "<p>HTTP works directly, HTTPS goes through the marketplace " \
+    "/proxy endpoint (Python handles TLS for us).</p>" \
     "<h2>Try a link</h2>" \
     "<ul>" \
+      "<li><a href=\"https://example.com/\">https://example.com</a></li>" \
+      "<li><a href=\"https://info.cern.ch/\">https://info.cern.ch</a></li>" \
+      "<li><a href=\"http://info.cern.ch/\">http://info.cern.ch (direct)</a></li>" \
       "<li><a href=\"/index.html\">Local repo home</a></li>" \
-      "<li><a href=\"/index.json\">Local repo index.json</a></li>" \
-      "<li><a href=\"/packages/hello/manifest.json\">hello manifest</a></li>" \
       "<li><a href=\"/packages/minesweeper/manifest.json\">minesweeper manifest</a></li>" \
     "</ul>" \
-    "<p>Type a path or full <i>http://</i> URL into the bar above " \
-    "and press Enter.</p>"
+    "<p>Type a path or full http(s) URL into the bar above and " \
+    "press Enter.</p>"
 
 #define ITEM_TEXT  0
 #define ITEM_LBR   1   /* hard line break */
@@ -637,20 +637,67 @@ void browser_navigate(const char *url) {
         return;
     }
 
+    /* HTTPS detection: we don't have a TLS stack, so we route any
+     * https URL through the marketplace's /proxy endpoint -- the
+     * Python backend handles the TLS leg for us. The same trick
+     * means the browser can reach any plain-HTTP site that won't
+     * route through QEMU slirp directly. */
+    int via_proxy = (current_url[0]=='h' && current_url[1]=='t' &&
+                     current_url[2]=='t' && current_url[3]=='p' &&
+                     current_url[4]=='s' && current_url[5]==':');
+
     struct parsed_url pu;
-    parse_url(current_url, &pu);
+    char  proxy_path[512];
     uint32_t ip;
-    if (parse_ipv4(pu.host, &ip) != 0) {
-        /* host is a name -- resolve via DNS through QEMU's slirp. */
-        set_status(0, "resolving...");
-        if (dns_lookup(pu.host, &ip, 750 /* 3 sec */) != 0) {
-            set_status(0, "DNS lookup failed");
-            item_count = 0;
-            return;
+    if (via_proxy) {
+        /* Build /proxy?url=<percent-encoded original URL>. */
+        int o = 0;
+        const char *prefix = "/proxy?url=";
+        while (*prefix && o + 1 < (int)sizeof(proxy_path)) proxy_path[o++] = *prefix++;
+        static const char hex[] = "0123456789ABCDEF";
+        for (int i = 0; current_url[i] && o + 4 < (int)sizeof(proxy_path); i++) {
+            unsigned c = (unsigned char)current_url[i];
+            int safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                       (c >= '0' && c <= '9') ||
+                       c == '-' || c == '_' || c == '.' || c == '~';
+            if (safe) proxy_path[o++] = (char)c;
+            else {
+                proxy_path[o++] = '%';
+                proxy_path[o++] = hex[(c >> 4) & 0xf];
+                proxy_path[o++] = hex[c & 0xf];
+            }
         }
+        proxy_path[o] = 0;
+        /* Marketplace proxy is at the slirp gateway:8090 (same as the
+         * docker repo). */
+        ip      = (10u<<24) | (0u<<16) | (2u<<8) | 2u;
+        pu.port = 8090;
+        int hi = 0;
+        const char *h = "10.0.2.2";
+        while (h[hi] && hi + 1 < (int)sizeof(pu.host)) {
+            pu.host[hi] = h[hi]; hi++;
+        }
+        pu.host[hi] = 0;
+        int pi = 0;
+        while (proxy_path[pi] && pi + 1 < (int)sizeof(pu.path)) {
+            pu.path[pi] = proxy_path[pi]; pi++;
+        }
+        pu.path[pi] = 0;
+        set_status(0, "fetching via proxy...");
+    } else {
+        parse_url(current_url, &pu);
+        if (parse_ipv4(pu.host, &ip) != 0) {
+            /* host is a name -- resolve via DNS through QEMU's slirp. */
+            set_status(0, "resolving...");
+            if (dns_lookup(pu.host, &ip, 750 /* 3 sec */) != 0) {
+                set_status(0, "DNS lookup failed");
+                item_count = 0;
+                return;
+            }
+        }
+        set_status(0, "fetching...");
     }
 
-    set_status(0, "fetching...");
     uint8_t *body = (uint8_t *)kalloc(MAX_BODY);
     if (!body) { set_status(0, "out of memory"); return; }
     int code = 0;

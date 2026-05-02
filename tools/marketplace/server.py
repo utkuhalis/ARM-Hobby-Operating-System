@@ -32,7 +32,9 @@ import sqlite3
 import time
 import http.server
 import socketserver
-from urllib.parse import urlparse, parse_qs
+import urllib.request
+import urllib.error
+from urllib.parse import urlparse, parse_qs, unquote
 
 PORT     = int(os.environ.get("PORT", "8080"))
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
@@ -146,6 +148,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 pid = rest[:-len("/comments")]
                 return self._community_comments(pid)
             return self._community_get(rest)
+        if path == "/proxy":
+            return self._proxy(qs)
 
         # Otherwise: static -> tries /repo/<path>
         if not serve_static(path, self):
@@ -268,6 +272,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         con.commit()
         con.close()
         json_response(self, 200, {"ok": True})
+
+    def _proxy(self, qs):
+        """Fetch any http:// or https:// URL on behalf of the in-OS
+        browser, since the kernel doesn't speak TLS. The OS already
+        knows how to talk plain HTTP to us, so it just hands the URL
+        here and gets the body back."""
+        url = (qs.get("url", [""])[0] or "").strip()
+        url = unquote(url)
+        if not url:
+            return text_response(self, 400, "missing ?url=")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return text_response(self, 400, "url must be http:// or https://")
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "HobbyARM-OS-browser/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                ct = r.headers.get("Content-Type",
+                                   "application/octet-stream")
+                code = r.status
+                # cap at 2 MiB so a runaway server doesn't OOM us
+                data = r.read(2 * 1024 * 1024)
+        except urllib.error.HTTPError as e:
+            # Forward the upstream error body so the browser can show
+            # the message rather than a generic failure.
+            try: data = e.read(64 * 1024)
+            except Exception: data = b""
+            ct   = e.headers.get("Content-Type", "text/plain") if e.headers else "text/plain"
+            code = e.code
+        except Exception as e:
+            return text_response(self, 502, f"proxy error: {e}")
+        self.send_response(code)
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Hobby-Proxy", "1")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _community_rate(self, pid_str):
         try:    pid = int(pid_str)
