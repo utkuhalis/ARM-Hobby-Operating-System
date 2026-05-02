@@ -1,185 +1,295 @@
 # Hobby ARM Operating System
 
-A minimal, hand-rolled AArch64 kernel built from scratch for fun and learning.
+A hand-rolled **AArch64 (ARM 64-bit)** hobby operating system, built
+from scratch in C and assembly with **Claude AI** as a pair-
+programming partner. No code is borrowed from another OS; everything
+from the boot stub to the HTTPS-capable browser was written for this
+project, line by line.
 
-It boots like a tiny PC: HobbyBIOS POST screen lists the detected CPU,
-memory, framebuffer, storage, console, MMU, heap, scheduler, GIC, virtio
-keyboard / block / network and PSCI power services line by line, then
-drops into an interactive shell with a multi-task scheduler, a syscall
-dispatcher, a built-in package manager and account system, and a small
-catalog of user-style programs you can `run`.
+It boots in QEMU at **1920×1080**, lands on a graphical boot splash,
+asks the user to log in, and drops onto a macOS-flavoured desktop
+with a dock, draggable file icons, animated windows, a working
+TCP/IP stack, a real HTML browser, a package manager, a Scratch-
+style block-programming app and an online marketplace backend.
 
-The same source tree builds for two targets:
-
-| Target      | Where it runs                                    |
-|-------------|--------------------------------------------------|
-| `qemu-virt` | Any host with QEMU — macOS, Linux, Windows-on-ARM, Windows x64 |
-| `raspi5`    | Raspberry Pi 5 real hardware (SD card boot)      |
+![Boot splash](assets/boot.png)
 
 ---
 
-## What it does
+## Highlights
 
-`make run-graphic` opens a QEMU window. The kernel performs a small
-PC-style POST that lists the detected CPU, memory, GPU, storage,
-console and power services line-by-line, then drops into an interactive
-shell — all rendered onto a ramfb framebuffer so the window looks like
-a tiny PC booting:
+| | |
+|---|---|
+| **Architecture** | AArch64 / ARMv8-A (Cortex-A72 in QEMU, designed for Cortex-A76 on Pi 5) |
+| **Boot** | Custom boot.S → MMU (4 KiB granule, 39-bit VA) → GIC v2 → exception vectors → cooperative scheduler → user EL1h |
+| **Display** | ramfb @ 1920×1080 XRGB8888, double-buffered compositor with anti-aliased Monaco font |
+| **Networking** | Hand-rolled TCP/IP stack — ARP, ICMP, TCP, UDP, DNS, HTTP/1.0 + HTTPS via proxy |
+| **Storage** | virtio-blk with auto-saving on-disk filesystem and a SHA-256 verified package store |
+| **User mode** | Cross-compiled ELFs run at EL1h via SVC syscalls; minesweeper / sudoku / hello / counter / clock / load / files / sysinfo |
+| **GUI** | macOS-style dock + top bar, animated minimize/restore, multi-select, drag-drop, right-click menus, rename, folders |
+| **Apps** | Terminal, Calculator, Notepad, Browser, Calendar, Tasks, Disks, Settings, App Store, Maker |
+| **Crash** | Save / Report / Close modal instead of a kernel panic — fs flushes to disk, /crash.log gets written |
 
-![POST + shell on QEMU](assets/qemu-bios-post.png)
+---
 
-`make run` does the same boot but without the window — output and
-input go directly to your terminal, which is handy for headless hosts
-or when you just want a Linux-shell feel:
+## Screens
+
+### Login
+
+![Login screen](assets/login.png)
+
+A graphical login gate (default: `root` / `root`) backed by `accounts.c`.
+Tab switches fields, blinking caret, mouse hit-tests on click.
+
+### Desktop
+
+![Desktop with dock + file icons](assets/desktop.png)
+
+Top bar (clock / date / network status), draggable file icons on the
+wallpaper, dock at the bottom with built-ins (Terminal, Calculator,
+Notepad, Browser, Calendar, Maker, Tasks, Disks, Settings, App Store).
+Open apps light up with a halo + indicator dot. Wallpaper persists
+across reboots.
+
+### Browser — actual HTTPS browsing
+
+![https://google.com on the in-OS browser](assets/browser-google.png)
+
+The browser parses HTML, renders headings / lists / links / `<hr>`
+with the smooth font, supports clickable navigation + history. Plain
+HTTP goes direct; **HTTPS routes through a `/proxy` endpoint on the
+marketplace backend** — Python handles TLS for us so the kernel stays
+small. Type `https://google.com/` and Google's actual home page
+loads.
+
+### Fullscreen game with a kernel-overlaid Close button
+
+![Minesweeper running fullscreen](assets/minesweeper.png)
+
+User-mode programs that call `SYS_GUI_TAKE` get the framebuffer to
+themselves. The kernel transparently overlays a red **Close** button
+top-right on every `SYS_GUI_PRESENT`; clicking it kills the owning
+task and brings the desktop back. Both Minesweeper and Sudoku ship
+as installable packages from the repo.
+
+### Crash modal
+
+![Save / Report / Close modal](assets/crash.png)
+
+When the kernel hits an unrecoverable fault, instead of halting in
+WFI it paints a centered card over a deep blue field. **Save**
+flushes the filesystem to virtio-blk, **Report** writes the panic
+info (ESR_EL1, ELR_EL1, fault classification) to `/crash.log`, and
+**Close** powers off cleanly via PSCI.
+
+---
+
+## How it actually works
+
+1. CPU starts at `_start` in `src/boot.S`. Non-zero cores park in WFI;
+   core 0 sets up a stack, zeroes BSS, branches to `kernel_main` in C.
+2. `mmu_init` builds a 4 KiB-granule pgtable identity-mapping the
+   first 4 GiB (0–1 GiB device, 1–2 GiB RAM, 2–4 GiB also normal).
+3. GIC v2 + exception vectors come up; the timer fires at 250 Hz.
+4. virtio drivers (input, mouse, blk, net) probe the MMIO bus and
+   register IRQs.
+5. fb_init talks to QEMU's `fw_cfg` to register a ramfb framebuffer at
+   1920×1080 XRGB8888. Two pixel buffers (front / back) live in BSS
+   for tear-free presentation.
+6. The graphical boot splash paints over a vertical blue gradient with
+   a logo card and progress bar. POST status is also written to UART
+   for headless logs.
+7. `login_run` takes the framebuffer, polls keyboard and mouse, and
+   only returns once `accounts.c` accepts a credential.
+8. The cooperative scheduler comes online: `idle`, `ticker`,
+   `status_thread`. `status_thread` does the compose loop — wallpaper,
+   icons, windows (back to front), top bar + dock + context menu,
+   cursor, present.
+9. `shell_run` reads commands from UART or from the in-window
+   Terminal once the user opens it.
+
+The `Tasks` window's advanced mode shows live `ran_ticks`, %CPU,
+stack size, and kernel/user kind for every task.
+
+---
+
+## Networking from scratch
+
+Layer-by-layer, all in `src/`:
+
+- **virtio-net** (`virtio_net.c`) — TX/RX virtqueues, DMA cache flushes
+  via `dc cvac` / `dc ivac`, MAC negotiation
+- **Ethernet + ARP** (`net.c`) — broadcast resolve, single-entry cache,
+  reply path for incoming queries
+- **IPv4** (`net.c`) — header build/parse, dispatch by protocol
+- **ICMP echo** (`net.c`) — handles incoming pings + sends our own
+  via `net_ping` (used by the `ping` shell command)
+- **UDP** (`net.c`) — datagram build/dispatch
+- **DNS** (`dns.c`) — A-record query against `10.0.2.3:53` (slirp's
+  resolver), in-flight matching by transaction id + source port
+- **TCP** (`tcp.c`) — single-connection blocking, three-way handshake,
+  proper window advertising, retransmit on no-ACK loop, FIN/CLOSE_WAIT
+- **HTTP/1.0** (`http.c`) — `GET` and `POST` with status-line parse and
+  header skip
+- **HTTPS** — proxied through the marketplace backend's `/proxy?url=…`
+  endpoint, since a real TLS stack is its own multi-week project
+
+`ping`, `nslookup`, `ifconfig` are all in the shell. Every wait loop
+yields cooperatively so the desktop stays responsive even during
+network round-trips.
+
+---
+
+## Package manager + marketplace
+
+`tools/repo/` is a Docker-served HTTP catalog with one manifest per
+package (name, version, license, sha256, declared syscalls, exec
+path). On the OS side, `pkg install <name>` does a real download:
 
 ```
-================================================================
- HobbyBIOS v0.3  (board: qemu-virt)
- (c) 2026  Hobby ARM Operating System
-================================================================
-
-Performing power-on self test...
-
-[ OK ] CPU       ARM Cortex-A72  (EL1)
-                 MIDR_EL1=0x410fd083  MPIDR=0x80000000
-                 system timer 62.5 MHz
-[ OK ] Memory    256 MiB total
-                 kernel  0x40000000 .. 0x401e9c10
-[ OK ] Display   ramfb 800x600 XRGB8888 (host window)
-[ OK ] Storage   RAM filesystem  16 slots x 4 KiB = 64 KiB
-[ OK ] Console   PL011 UART @ 0x9000000
-[ OK ] Power     PSCI hypercalls: SYSTEM_OFF, SYSTEM_RESET
-
-----------------------------------------------------------------
- Boot complete. Type 'help' for commands.
-----------------------------------------------------------------
-
-hobby# uname -a
-Hobby ARM OS v0.2 aarch64 qemu-virt ARM Cortex-A72
-hobby# write notes Hobby ARM OS calisiyor
-wrote 23 bytes to notes
-hobby# ls
-  notes                            23 bytes
-hobby# cat notes
-Hobby ARM OS calisiyor
-hobby# halt
-system halted.
+GET /packages/<name>/manifest.json    -> parse sha256 + size
+GET /packages/<name>/<name>.elf       -> 67 KiB ELF
+verify SHA-256
+write to pkgstore (dedicated region of virtio-blk)
 ```
 
-In `run-graphic` the same output also goes to the QEMU window via the
-framebuffer text console, while keyboard input is read from your
-terminal — a USB keyboard driver to make the window fully interactive
-is on the roadmap.
+`run <name>` reads the binary back, `elf_load`s its PT_LOAD segments
+to `0x4F000000`, and `task_spawn_user`s the entry. Across reboots the
+pkgstore survives, so installed apps come back automatically.
 
-## Built-in commands
+`tools/marketplace/` extends the repo with a Python + SQLite backend
+for **community-uploaded programs** (Maker JSON):
 
-| Command           | Description                              |
-|-------------------|------------------------------------------|
-| `help`            | List all commands                        |
-| `echo <text...>`  | Print arguments                          |
-| `clear`           | Clear the screen (ANSI)                  |
-| `ls`              | List files in the RAM filesystem         |
-| `cat <name>`      | Print a file                             |
-| `write <name> <text...>` | Create or overwrite a file        |
-| `touch <name>`    | Create an empty file                     |
-| `rm <name>`       | Delete a file                            |
-| `uname [-a]`      | OS / arch / board / CPU info             |
-| `cpuinfo`         | MIDR, MPIDR, current EL, counter freq    |
-| `meminfo`         | Kernel image + stack layout, fs usage    |
-| `uptime`          | Seconds since boot (from `cntpct_el0`)   |
-| `halt`            | Power off via PSCI `SYSTEM_OFF`          |
-| `reboot`          | Reset via PSCI `SYSTEM_RESET`            |
+```
+GET  /community              # list / search (?q=)
+POST /community              # upload {name, author, summary, code}
+GET  /community/<id>         # bumps download count
+GET  /community/<id>/comments
+POST /community/<id>/comments
+POST /community/<id>/rate    # 1..5 stars
+GET  /proxy?url=https://...  # TLS fetcher used by the in-OS browser
+```
 
-The filesystem holds up to 16 files of 4 KB each, all in RAM — there is no
-backing store yet, so contents vanish at reboot.
+Ships with `Dockerfile` + `railway.json`. `make mkt-rebuild` runs it
+locally; deploy to Railway with `railway up` plus a Volume on `/data`
+for SQLite persistence. The OS-side talks to it at
+`http://10.0.2.2:8090` from inside QEMU.
 
-## How it works
+### Maker — block-style programming
 
-1. CPU starts at `_start` in [`src/boot.S`](src/boot.S).
-2. Non-zero cores park in `wfi`.
-3. Core 0 sets up a stack, zeroes `.bss`, and branches to `kernel_main` in C.
-4. `kernel_main` initializes the UART and the in-memory filesystem.
-5. On QEMU `virt`, it talks to the `fw_cfg` device, hands it a ramfb
-   config (XRGB8888, 800×600), and brings up a framebuffer text console
-   using a public-domain 8×8 bitmap font.
-6. Runs the POST sequence — each line is printed with a small delay
-   so it actually feels like a machine going through self-test.
-7. Drops into the shell loop: read a line over UART (echoed to both the
-   serial console and the framebuffer), tokenize on whitespace, dispatch
-   to a command function from a static table.
+The Maker app composes programs from blocks (Print, Set, If, Repeat,
+End), runs them in-process via a small interpreter, saves them to
+`/maker/<name>` in the local fs, and uploads them to `/community` so
+others can browse + rate them.
 
-The PL011 register layout is identical between QEMU's `virt` machine and the
-Raspberry Pi 5, so the per-board differences boil down to:
+---
 
-- the UART base address (`src/board/<name>.h`)
-- the kernel load address (`linker/<name>.ld`)
+## Built into the dock
+
+| App | What it does |
+|---|---|
+| **Terminal** | Live shell, attaches to the system console |
+| **Calculator** | Stack-machine calculator with widget buttons |
+| **Notepad** | Edit any file picked via desktop double-click; Save persists; auto-flush to virtio-blk |
+| **Browser** | HTML parser + link navigation; HTTPS via proxy |
+| **Calendar** | Current month grid, today bracketed (Zeller's congruence) |
+| **Maker** | Block-style programming with marketplace upload |
+| **Tasks** | Live task table with Simple/Advanced modes (PID, ticks, %CPU, kind, stack) |
+| **Disks** | fs file listing + virtio-blk capacity |
+| **Settings** | Wallpaper picker, account, network status |
+| **App Store** | Install / remove packages from the marketplace |
+
+---
+
+## Targets
+
+| Target      | Where it runs                                             |
+|-------------|-----------------------------------------------------------|
+| `qemu-virt` | Any host with QEMU — macOS, Linux, Windows-on-ARM, Windows x64 |
+| `raspi5`    | Raspberry Pi 5 real hardware (SD-card boot)               |
+
+The PL011 register layout is identical between QEMU's `virt` machine
+and the Pi 5, so per-board differences boil down to:
+
+- UART base address (`src/board/<name>.h`)
+- kernel load address (`linker/<name>.ld`)
 - whether the board has a `ramfb` framebuffer (`BOARD_HAS_RAMFB`)
 - a board name used by `uname` and `meminfo`
+
+---
 
 ## Requirements
 
 - `aarch64-elf-gcc` and `aarch64-elf-binutils` — cross compiler
-- `qemu-system-aarch64` — for running without hardware
+- `qemu-system-aarch64`
 - `make`
+- `docker` (only for the package repo / marketplace)
+- `python3 + Pillow` (only if you want to regenerate the smooth font
+  atlas via `tools/gen_font.py`)
 
 ### macOS
 
-```
+```sh
 brew install qemu aarch64-elf-gcc aarch64-elf-binutils
 ```
 
 ### Linux
 
-```
+```sh
 sudo apt install qemu-system-arm gcc-aarch64-linux-gnu
 make CROSS=aarch64-linux-gnu-
 ```
 
 ### Windows on ARM
 
-Install QEMU from [qemu.org](https://www.qemu.org/download/), grab a prebuilt
-`aarch64-elf` GCC toolchain (or use WSL), then run `make` the same way.
+Install QEMU from [qemu.org](https://www.qemu.org/download/), grab a
+prebuilt `aarch64-elf` GCC toolchain (or use WSL), then run `make`
+the same way.
+
+---
 
 ## Build & run
 
-```
-# Default target is qemu-virt
-make                # build kernel.elf + kernel.img
-make run            # boot to a serial shell in your terminal
-make run-graphic    # also open a QEMU window with the framebuffer
-make run-vnc        # full mouse + keyboard interaction via VNC
-make screenshot     # boot headless and dump the framebuffer to PNG
+```sh
+# default target is qemu-virt
+make                 # build kernel.elf + kernel.img + disk.img
+make run             # boot to a serial shell
+make run-graphic     # also open a QEMU window (macOS Cocoa)
+make run-vnc         # VNC server on :5901 for full mouse + keyboard
+make screenshot      # boot headless and dump the framebuffer to PNG
 
-# Raspberry Pi 5 image
+# package + marketplace
+make repo-rebuild    # rebuild the simple Docker package repo
+make mkt-rebuild     # rebuild the full marketplace (community + /proxy)
+
+# raspberry pi 5 image
 make BOARD=raspi5
-# → build/raspi5/kernel_2712.img
+# -> build/raspi5/kernel_2712.img
 ```
 
-Press `Ctrl-A` then `X` to quit the serial shell. In `run-graphic`, close the
-QEMU window or use the `halt` command from the shell.
+Press `Ctrl-A` then `X` to quit the serial shell. In `run-graphic`,
+close the QEMU window or use the `halt` command.
 
 ### Why three different `run` targets?
 
-`run-graphic` opens a QEMU window via macOS Cocoa, which is great for
-*looking* at the desktop but doesn't reliably forward host mouse and
-keyboard events into the virtio-input devices. Use `run-vnc` for a real
-interactive session: QEMU starts a VNC server on port 5901, and the
-built-in macOS Screen Sharing client (`open vnc://localhost:5901`)
-captures pointer + key events and pumps them straight through to the
-guest. From there, the cursor follows the trackpad, buttons fire, and
-arrow keys / Esc navigate the desktop just like on a real machine.
+`run-graphic` opens a QEMU window via macOS Cocoa, which is great
+for *looking* at the desktop but doesn't reliably forward host
+mouse and keyboard events into the virtio-input devices. Use
+`run-vnc` for a real interactive session: QEMU starts a VNC server
+on port 5901, and the built-in macOS Screen Sharing client
+(`open vnc://localhost:5901`) captures pointer + key events and
+pumps them straight through to the guest.
 
-`run` is the headless serial shell — handy when you don't need the
-graphical desktop at all. The shell also has a `mouse` command
-(`mouse right 200`, `mouse to 470 410`, `mouse click`) so you can
-drive the cursor over the serial line if no GUI input is available.
+`run` is the headless serial shell — handy for debugging, and the
+shell has a `mouse` command (`mouse right 200`, `mouse to 470 410`,
+`mouse click`) so you can drive the cursor without a GUI.
 
 ### Booting on a real Raspberry Pi 5
 
 1. Format an SD card as FAT32.
-2. Copy the Pi firmware files (`bootcode.bin`, `start4.elf`, `fixup4.dat`,
-   `bcm2712-rpi-5-b.dtb`, etc.) from the official
-   [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware) onto it.
+2. Copy the Pi firmware files (`bootcode.bin`, `start4.elf`,
+   `fixup4.dat`, `bcm2712-rpi-5-b.dtb`, etc.) from the official
+   [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware).
 3. Copy `build/raspi5/kernel_2712.img` to the SD card root.
 4. Add a `config.txt` with:
 
@@ -189,29 +299,12 @@ drive the cursor over the serial line if no GUI input is available.
    enable_uart=1
    ```
 
-5. Wire up a USB-to-UART adapter to GPIO14/15, open it at 115200 8N1, boot
-   the Pi. The shell prompt comes up over the serial line; commands like
-   `cpuinfo` will report the actual Pi 5 CPU (Cortex-A76).
+5. Wire up a USB-to-UART adapter to GPIO14/15, open it at 115200 8N1,
+   boot the Pi. The shell prompt comes up over the serial line;
+   commands like `cpuinfo` will report the actual Pi 5 CPU
+   (Cortex-A76).
 
-## Package repository
-
-Hobby ARM OS treats everything above the kernel as a package -- the
-desktop apps, system tools, even closed-source third-party binaries
-ship through the same channel. The `tools/repo/` directory holds an
-HTTP-served catalogue with one manifest per package:
-
-```sh
-docker build -t hobby-os-repo tools/repo
-docker run --rm -p 8090:8080 hobby-os-repo
-curl http://localhost:8090/index.json
-```
-
-Each package is a directory under `tools/repo/packages/<name>/`
-containing a `manifest.json` (name, version, license, open/closed
-source, sha256, declared syscalls) plus the AArch64 ELF binary the
-guest will load. Once the kernel-side TCP/IP stack lands, the App
-Store window will fetch this index over HTTP and stream packages
-straight onto the in-RAM filesystem.
+---
 
 ## Project layout
 
@@ -219,101 +312,134 @@ straight onto the in-RAM filesystem.
 hobby-os/
 ├── Makefile
 ├── README.md
-├── assets/
-│   └── qemu-bios-post.png
+├── assets/                       # README screenshots
 ├── src/
-│   ├── boot.S            # AArch64 entry, stack + .bss setup
-│   ├── kernel.c          # kernel_main, boot banner
-│   ├── uart.c, uart.h    # PL011 driver (TX + RX)
-│   ├── console.c, console.h  # putc/puts/printf, line editor
-│   ├── str.c, str.h      # mem*/str*/printf core
-│   ├── shell.c, shell.h  # parser + command table
-│   ├── fs.c, fs.h        # 16-slot RAM filesystem
-│   ├── sysinfo.c, sysinfo.h  # MIDR/MPIDR/CNT* readers
-│   ├── psci.c, psci.h    # PSCI HVC for halt/reset
-│   ├── exceptions.c/.h   # VBAR setup, irq_enable, irq_handler dispatch
-│   ├── vectors.S         # AArch64 EL1 vector table (IRQ entry)
-│   ├── gic.c, gic.h      # GIC v2 distributor + CPU interface
-│   ├── timer.c, timer.h  # ARM generic timer @ 100 Hz tick
-│   ├── virtio.c, virtio.h          # virtio-mmio device discovery
-│   ├── virtio_input.c, virtio_input.h  # virtio-input keyboard driver
-│   ├── fb.c, fb.h        # ramfb framebuffer + glyph drawing
-│   ├── fb_console.c, fb_console.h  # text terminal on the framebuffer
-│   ├── fw_cfg.c, fw_cfg.h  # QEMU fw_cfg DMA client
-│   ├── font.c, font.h    # public-domain 8×8 bitmap font (ASCII 0-127)
-│   └── board/
-│       ├── qemu-virt.h
-│       └── raspi5.h
-├── linker/
-│   ├── qemu-virt.ld      # load at 0x40000000
-│   └── raspi5.ld         # load at 0x80000
+│   ├── boot.S                    # AArch64 entry, stack + .bss setup
+│   ├── kernel.c                  # kernel_main, POST, app launchers
+│   ├── boot_splash.c, .h         # graphical boot splash
+│   ├── login.c, .h               # full-screen login gate
+│   ├── desktop.c, .h             # icons, dock, top bar, context menu
+│   ├── window.c, .h              # window manager + widget tree
+│   ├── wallpaper.c, .h           # 8 baked-in wallpapers, persisted
+│   ├── browser.c, .h             # HTML parser + link navigation
+│   ├── maker.c, .h               # block-style programming app
+│   ├── panic.c, .h               # Save / Report / Close crash modal
+│   ├── fb.c, .h                  # ramfb + alpha-blended glyph render
+│   ├── font.c                    # Spleen 8x16 fallback bitmap font
+│   ├── font_smooth.h             # auto-gen Monaco atlas (UI + heading)
+│   ├── fb_console.c, .h          # text terminal on the framebuffer
+│   ├── fw_cfg.c, .h              # QEMU fw_cfg DMA client
+│   ├── uart.c, .h                # PL011 driver
+│   ├── console.c, .h             # putc/puts/printf, line editor
+│   ├── str.c, .h                 # mem*/str*/printf core
+│   ├── shell.c, .h               # parser + command table
+│   ├── fs.c, .h                  # 16-slot RAM fs + auto-save
+│   ├── pkgmgr.c, .h              # catalog + install/remove/run
+│   ├── pkgstore.c, .h            # virtio-blk-backed package binaries
+│   ├── sha256.c, .h              # SHA-256 for package verification
+│   ├── elf.c, .h                 # AArch64 ELF64 loader
+│   ├── exceptions.c, .h          # IRQ + sync handler dispatch
+│   ├── vectors.S                 # AArch64 EL1 vector table
+│   ├── gic.c, .h                 # GIC v2
+│   ├── timer.c, .h               # ARM generic timer @ 250 Hz tick
+│   ├── task.c, .h, switch.S      # cooperative scheduler + ctx switch
+│   ├── syscall.c, .h             # SVC dispatch (write/exit/yield/gui_*)
+│   ├── mmu.c, .h                 # 4 KiB granule, 39-bit VA pgtable
+│   ├── psci.c, .h                # PSCI HVC for halt/reset
+│   ├── virtio.c, .h              # virtio-mmio device discovery + DMA
+│   ├── virtio_input.c, .h        # virtio-keyboard
+│   ├── virtio_mouse.c, .h        # virtio-tablet
+│   ├── virtio_blk.c, .h          # virtio-blk
+│   ├── virtio_net.c, .h          # virtio-net TX/RX
+│   ├── net.c, .h                 # Ethernet/ARP/IPv4/ICMP/UDP
+│   ├── tcp.c, .h                 # TCP state machine
+│   ├── dns.c, .h                 # DNS resolver
+│   ├── http.c, .h                # HTTP/1.0 GET + POST
+│   ├── sysinfo.c, .h             # MIDR/MPIDR/CNT* readers
+│   ├── user_program.c, .h        # built-in fallbacks (hello, counter…)
+│   └── board/{qemu-virt,raspi5}.h
+├── linker/{qemu-virt,raspi5}.ld
 ├── scripts/
 │   ├── run-qemu.sh
 │   └── screenshot.sh
 └── tools/
-    └── repo/             # Docker-served HTTP package repository
-        ├── Dockerfile
-        ├── serve.py
-        ├── index.json
-        └── packages/<name>/manifest.json
+    ├── sdk/                      # cross-compile SDK for user packages
+    │   ├── hobby_sdk.h           # syscall wrappers + helpers
+    │   ├── crt0.S                # _start -> hobby_main -> sys_exit
+    │   ├── user.ld               # link at 0x4F000000
+    │   └── build_pkg.sh          # rasterizes ELF + updates manifest
+    ├── repo/                     # simple HTTP package repo (Docker)
+    │   ├── Dockerfile
+    │   ├── serve.py
+    │   ├── index.html
+    │   ├── index.json
+    │   └── packages/<name>/      # manifest.json + .elf + source/
+    ├── marketplace/              # community marketplace + /proxy
+    │   ├── Dockerfile
+    │   ├── railway.json
+    │   ├── README.md
+    │   └── server.py             # SQLite + /community + /proxy?url=
+    └── gen_font.py               # rasterize TTF into a smooth atlas
 ```
 
-## Roadmap
+---
 
-**v0.6 — desktop with windows, widgets and a calculator.** The
-framebuffer now hosts a real (small) desktop with multiple windows
-(Terminal, System Monitor, About, Calculator), click-to-focus,
-title-bar drag, label/button widgets and an actual on_click stack
-machine driving the calculator display.
+## Roadmap / known gaps
 
-Phases delivered so far:
+Done so far (in commit order, with screenshots above):
 
-- [x] **A** GIC v2 + ARM generic timer + PL011 RX interrupts
-- [x] **B** virtio-keyboard (host keyboard goes straight to the shell)
-- [x] **C** MMU identity map, kernel heap, cooperative scheduler with
-       idle/ticker/status threads, SVC syscall dispatcher, first user-style
-       program
-- [x] **D** Live framebuffer status bar + multiple built-in apps
-- [x] **E** virtio-blk device discovery + filesystem save/load surface
-       (write submit path still WIP)
-- [x] **F** virtio-net device discovery + MAC reading + `ifconfig`
-- [x] **G** User accounts (login / whoami / logout) + a built-in
-       package manager (`pkg list/install/remove`)
+- [x] PL011 UART, GIC v2, ARM generic timer, MMU
+- [x] virtio-input keyboard + virtio-tablet mouse + cursor sprite
+- [x] virtio-blk + on-disk filesystem (`HBFS` magic), auto-save
+- [x] virtio-net + ARP + ICMP echo (replies + outbound `ping`)
+- [x] TCP three-way handshake + flow control + FIN
+- [x] DNS resolver (UDP) for non-numeric hostnames
+- [x] HTTP/1.0 client (GET + POST)
+- [x] **HTTPS via marketplace `/proxy`** (real internet sites work)
+- [x] Cooperative scheduler with idle/ticker/status threads, SVC syscalls
+- [x] Cross-compile SDK + ELF loader; user-mode apps run at EL1h
+- [x] Real package manager: download + SHA-256 verify + persist + run
+- [x] Graphical boot splash + login gate + 1920×1080 framebuffer
+- [x] macOS-flavoured desktop: dock, icons, drag-drop, multi-select,
+      animated minimize/restore, right-click menus, rename, folders
+- [x] Anti-aliased font (Monaco atlas, alpha-blended)
+- [x] Built-in apps: Terminal, Calculator, Notepad, Browser, Calendar,
+      Maker, Tasks, Disks, Settings, App Store
+- [x] Minesweeper + Sudoku as installable packages with kernel-overlaid
+      Close button
+- [x] Save / Report / Close crash modal in place of kernel panic
+- [x] Wallpaper picker (8 presets) persisted to `/etc/wallpaper`
+- [x] Maker block-style programming + Railway-deployable marketplace
+      backend (community programs, ratings, comments, search)
 
-Scaffolding now in place (each one started, not all complete):
+Open gaps and follow-ups:
 
-- [~] virtio-mouse + framebuffer cursor sprite (mouse moves the
-      cursor in real time when the QEMU window has focus)
-- [~] PSCI `CPU_ON` secondary-core wakeup + per-CPU stacks
-      (kernel POSTs an SMP line; full SMP scheduler is the follow-up)
-- [~] AArch64 ELF64 loader (`elfinfo` validates and inspects ELF
-      files in the RAM fs; jumping into them needs the EL0 fix)
-- [~] Pi 5 GIC + UART IRQ numbers in board header (port still
-      compile-out until real-hardware bring-up)
+- [ ] Real EL0 isolation (split 1 GiB blocks into 2 MiB pages so user
+      code can have its own AP=01 mapping)
+- [ ] Real TLS in the kernel (TLS 1.3 + AES-GCM + ECDH + X.509) instead
+      of the proxy workaround
+- [ ] Pre-emptive scheduler instead of cooperative
+- [ ] SMP scheduling on the secondary cores brought up by PSCI CPU_ON
+- [ ] Pi 5 hardware bring-up (board header is in place, GIC IRQ
+      numbers + drivers need to be ported)
+- [ ] HTML entity decoder for `&#NNN;` references + Unicode glyphs
+      (Monaco atlas is ASCII only today)
+- [ ] Folder hierarchy in fs (one level today via path-prefix names)
+- [ ] In-OS Community browser tab in the App Store (backend is ready,
+      vitrine UI is missing)
 
-Known issue, top of the follow-up list:
+---
 
-- Driver-side virtio queue **write** path doesn't reach the device on
-  QEMU 11 + macOS aarch64. Symptom: virtio-input/tablet IRQs never
-  fire (`kbd evt: 0  irq: 0` in System Monitor) so cursor and
-  keyboard events from the QEMU window or VNC client never reach the
-  guest. Same root cause as virtio-blk save hanging at status=0xff.
-  Workaround today: drive the cursor and click from the serial-line
-  shell (`mouse right 200`, `mouse to X Y`, `mouse click`). Real fix
-  needs cache invalidation around the virtq + a virtio-input
-  capability probe (or a switch to virtio-pci transport).
+## Built with
 
-Open work, in rough order:
+- C11 + AArch64 assembly, no external libraries in the kernel
+- QEMU `virt` for emulation, `ramfb` for the framebuffer
+- Docker for the package repo / marketplace
+- Python 3 + SQLite for the marketplace backend
+- Pillow + a system Monaco TTF for the smooth-font atlas (one-shot)
+- **Claude AI** as a pair-programming partner throughout
 
-- [ ] Pull AP=01 page permissions out of the 1 GiB blocks so user
-      programs can really run at EL0 with isolation
-- [ ] Finish the virtio-blk write submit path so `save`/`load`
-      land bytes on disk
-- [ ] Real TCP/IP stack on top of the virtio-net link layer
-- [ ] Per-CPU run queues so the secondaries from CPU_ON actually
-      schedule tasks instead of parking in WFI
-- [ ] Wire the ELF loader through `run <name>` once we have a
-      proper user-mode loader path
+---
 
 ## License
 
